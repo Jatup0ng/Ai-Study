@@ -13,11 +13,16 @@ const { user } = useAuth()
 const subject = ref(null)
 const documents = ref([])
 const summaries = ref([]) // [{ summary_id, content, created_at, file_names: [...] }]
+const quizzes = ref([]) // [{ quiz_id, title, created_at, question_count, file_names: [...] }]
 
 const isLoadingSubject = ref(true)
 const isLoadingDocuments = ref(true)
 const isLoadingSummaries = ref(true)
+const isLoadingQuizzes = ref(true)
 const errorMessage = ref('')
+
+// Studio Panel มี 2 แท็บ: สร้าง Summary กับสร้าง Quiz ใช้ selectedDocumentIds ชุดเดียวกัน
+const activeStudioTab = ref('summary') // 'summary' | 'quiz'
 
 const STATUS_LABEL = {
   processing: 'กำลังประมวลผล',
@@ -91,6 +96,50 @@ async function fetchSummaries() {
   isLoadingSummaries.value = false
 }
 
+// ดึง Quiz ของวิชานี้ทั้งหมด แล้วต่อด้วยชื่อไฟล์ต้นทาง + จำนวนคำถามผ่าน Junction Table
+// (quiz_documents) เหมือน Pattern ของ fetchSummaries
+async function fetchQuizzes() {
+  isLoadingQuizzes.value = true
+
+  const { data: rows, error } = await supabase
+    .from('quizzes')
+    .select('quiz_id, title, created_at')
+    .eq('subject_id', props.id)
+    .order('created_at', { ascending: false })
+
+  if (error || !rows) {
+    isLoadingQuizzes.value = false
+    return
+  }
+
+  const quizIds = rows.map((r) => r.quiz_id)
+  let fileNamesByQuiz = {}
+  let questionCountByQuiz = {}
+
+  if (quizIds.length > 0) {
+    const [{ data: links }, { data: questionRows }] = await Promise.all([
+      supabase.from('quiz_documents').select('quiz_id, documents ( file_name )').in('quiz_id', quizIds),
+      supabase.from('questions').select('quiz_id').in('quiz_id', quizIds)
+    ])
+
+    for (const link of links || []) {
+      const list = fileNamesByQuiz[link.quiz_id] || []
+      list.push(link.documents?.file_name)
+      fileNamesByQuiz[link.quiz_id] = list
+    }
+    for (const q of questionRows || []) {
+      questionCountByQuiz[q.quiz_id] = (questionCountByQuiz[q.quiz_id] || 0) + 1
+    }
+  }
+
+  quizzes.value = rows.map((r) => ({
+    ...r,
+    file_names: (fileNamesByQuiz[r.quiz_id] || []).filter(Boolean),
+    question_count: questionCountByQuiz[r.quiz_id] || 0
+  }))
+  isLoadingQuizzes.value = false
+}
+
 function fileKind(fileName) {
   const ext = (fileName || '').split('.').pop()?.toLowerCase()
   if (ext === 'pdf') return 'PDF'
@@ -111,7 +160,7 @@ function snippet(content, length = 110) {
 
 onMounted(async () => {
   await Promise.all([fetchSubject(), fetchDocuments()])
-  await fetchSummaries()
+  await Promise.all([fetchSummaries(), fetchQuizzes()])
 })
 
 // --- อัปโหลดเอกสาร ---
@@ -207,21 +256,25 @@ const deletingDocumentId = ref(null)
 const deleteError = ref('')
 
 async function handleDeleteDocument(doc) {
-  // เช็คก่อนว่าเอกสารนี้ถูกใช้สร้าง Summary ไว้กี่รายการ (นับ Summary ที่ต่างกัน)
-  // เพื่อเตือนผู้ใช้ว่า Summary เหล่านั้นจะ Chat ต่อไม่ได้ ถ้าลบเอกสารนี้ทิ้ง
-  const { data: links } = await supabase
-    .from('summary_documents')
-    .select('summary_id')
-    .eq('document_id', doc.document_id)
+  // เช็คก่อนว่าเอกสารนี้ถูกใช้สร้าง Summary/Quiz ไว้กี่รายการ
+  // เพื่อเตือนผู้ใช้ก่อนลบ (Summary เสีย Chat, Quiz จะไม่มี Reference กลับไปไฟล์ต้นทาง)
+  const [{ data: summaryLinks }, { data: quizLinks }] = await Promise.all([
+    supabase.from('summary_documents').select('summary_id').eq('document_id', doc.document_id),
+    supabase.from('quiz_documents').select('quiz_id').eq('document_id', doc.document_id)
+  ])
 
-  const affectedCount = new Set((links || []).map((l) => l.summary_id)).size
+  const affectedSummaryCount = new Set((summaryLinks || []).map((l) => l.summary_id)).size
+  const affectedQuizCount = new Set((quizLinks || []).map((l) => l.quiz_id)).size
 
   let message = `ต้องการลบเอกสาร "${doc.file_name}" ใช่หรือไม่? การลบนี้ไม่สามารถกู้คืนได้`
-  if (affectedCount > 0) {
+  if (affectedSummaryCount > 0) {
     message +=
-      `\n\n⚠️ คำเตือน: เอกสารนี้ถูกใช้สร้าง Summary ไว้แล้ว ${affectedCount} รายการ\n` +
+      `\n\n⚠️ คำเตือน: เอกสารนี้ถูกใช้สร้าง Summary ไว้แล้ว ${affectedSummaryCount} รายการ\n` +
       `หากลบเอกสารนี้ Summary เหล่านั้นจะไม่สามารถใช้ฟีเจอร์แชทได้อีก ` +
       `(เนื้อหาสรุปที่มีอยู่แล้วยังคงอ่าน/แก้ไขได้ตามปกติ)`
+  }
+  if (affectedQuizCount > 0) {
+    message += `\n\n⚠️ เอกสารนี้ยังถูกใช้สร้าง Quiz ไว้แล้ว ${affectedQuizCount} ชุด (ตัว Quiz ยังใช้ทำแบบทดสอบได้ปกติ แค่จะไม่เหลือ Reference ไปยังไฟล์ต้นทางนี้)`
   }
 
   if (!confirm(message)) return
@@ -274,6 +327,34 @@ async function handleGenerateSummary() {
     generateError.value = err.message || 'สร้าง Summary ไม่สำเร็จ'
   } finally {
     isGenerating.value = false
+  }
+}
+
+// --- สร้าง Quiz รวมจากไฟล์ที่เลือก (รองรับ 1 หรือหลายไฟล์ เหมือน Summary) ---
+const isGeneratingQuiz = ref(false)
+const generateQuizError = ref('')
+const quizQuestionCount = ref(8)
+
+async function handleGenerateQuiz() {
+  if (selectedDocumentIds.value.length === 0) return
+
+  isGeneratingQuiz.value = true
+  generateQuizError.value = ''
+
+  try {
+    const { data, error } = await supabase.functions.invoke('generate-quiz', {
+      body: { document_ids: selectedDocumentIds.value, question_count: quizQuestionCount.value }
+    })
+
+    if (error) throw new Error(error.message || 'เรียก Edge Function ไม่สำเร็จ')
+    if (data?.error) throw new Error(data.error)
+
+    selectedDocumentIds.value = []
+    await fetchQuizzes()
+  } catch (err) {
+    generateQuizError.value = err.message || 'สร้าง Quiz ไม่สำเร็จ'
+  } finally {
+    isGeneratingQuiz.value = false
   }
 }
 </script>
@@ -358,37 +439,106 @@ async function handleGenerateSummary() {
         <section class="studio-pane">
           <h2 class="pane-title">Studio</h2>
 
-          <div class="generate-box">
-            <p class="generate-status">
-              <template v-if="selectedCount === 0">เลือกเอกสารทางซ้ายเพื่อเริ่มสรุป</template>
-              <template v-else>เลือกไว้ {{ selectedCount }} ไฟล์</template>
-            </p>
+          <div class="studio-tabs">
             <button
-              class="generate-btn"
-              :disabled="selectedCount === 0 || isGenerating"
-              @click="handleGenerateSummary"
+              type="button"
+              class="studio-tab"
+              :class="{ 'is-active': activeStudioTab === 'summary' }"
+              @click="activeStudioTab = 'summary'"
             >
-              {{ isGenerating ? 'AI กำลังสรุป... (อาจใช้เวลาสักครู่)' : '✨ สรุปรวมจากไฟล์ที่เลือก' }}
+              📝 Summary
             </button>
-            <p v-if="generateError" class="error-text">{{ generateError }}</p>
+            <button
+              type="button"
+              class="studio-tab"
+              :class="{ 'is-active': activeStudioTab === 'quiz' }"
+              @click="activeStudioTab = 'quiz'"
+            >
+              🧩 Quiz
+            </button>
           </div>
 
-          <h3 class="sub-title">สรุปที่มีอยู่แล้ว</h3>
-          <p v-if="isLoadingSummaries" class="status-text">กำลังโหลด...</p>
-          <p v-else-if="summaries.length === 0" class="status-text">ยังไม่มีสรุปในวิชานี้</p>
+          <!-- แท็บ Summary -->
+          <template v-if="activeStudioTab === 'summary'">
+            <div class="generate-box">
+              <p class="generate-status">
+                <template v-if="selectedCount === 0">เลือกเอกสารทางซ้ายเพื่อเริ่มสรุป</template>
+                <template v-else>เลือกไว้ {{ selectedCount }} ไฟล์</template>
+              </p>
+              <button
+                class="generate-btn"
+                :disabled="selectedCount === 0 || isGenerating"
+                @click="handleGenerateSummary"
+              >
+                {{ isGenerating ? 'AI กำลังสรุป... (อาจใช้เวลาสักครู่)' : '✨ สรุปรวมจากไฟล์ที่เลือก' }}
+              </button>
+              <p v-if="generateError" class="error-text">{{ generateError }}</p>
+            </div>
 
-          <ul v-else class="summary-list">
-            <li v-for="s in summaries" :key="s.summary_id" class="summary-card">
-              <RouterLink :to="{ name: 'summary-detail', params: { summaryId: s.summary_id } }" class="summary-link">
-                <span class="ai-badge">AI สรุปให้</span>
-                <p class="summary-snippet">{{ snippet(s.content) }}</p>
-                <p class="summary-meta">
-                  <template v-if="s.file_names.length">จาก {{ s.file_names.length }} ไฟล์ · </template>
-                  {{ formatDate(s.created_at) }}
-                </p>
-              </RouterLink>
-            </li>
-          </ul>
+            <h3 class="sub-title">สรุปที่มีอยู่แล้ว</h3>
+            <p v-if="isLoadingSummaries" class="status-text">กำลังโหลด...</p>
+            <p v-else-if="summaries.length === 0" class="status-text">ยังไม่มีสรุปในวิชานี้</p>
+
+            <ul v-else class="summary-list">
+              <li v-for="s in summaries" :key="s.summary_id" class="summary-card">
+                <RouterLink :to="{ name: 'summary-detail', params: { summaryId: s.summary_id } }" class="summary-link">
+                  <span class="ai-badge">AI สรุปให้</span>
+                  <p class="summary-snippet">{{ snippet(s.content) }}</p>
+                  <p class="summary-meta">
+                    <template v-if="s.file_names.length">จาก {{ s.file_names.length }} ไฟล์ · </template>
+                    {{ formatDate(s.created_at) }}
+                  </p>
+                </RouterLink>
+              </li>
+            </ul>
+          </template>
+
+          <!-- แท็บ Quiz -->
+          <template v-else-if="activeStudioTab === 'quiz'">
+            <div class="generate-box">
+              <p class="generate-status">
+                <template v-if="selectedCount === 0">เลือกเอกสารทางซ้ายเพื่อเริ่มสร้าง Quiz</template>
+                <template v-else>เลือกไว้ {{ selectedCount }} ไฟล์</template>
+              </p>
+              <label class="question-count-label">
+                จำนวนข้อ
+                <input
+                  type="number"
+                  v-model.number="quizQuestionCount"
+                  min="1"
+                  max="30"
+                  class="question-count-input"
+                />
+              </label>
+              <button
+                class="generate-btn"
+                :disabled="selectedCount === 0 || isGeneratingQuiz"
+                @click="handleGenerateQuiz"
+              >
+                {{ isGeneratingQuiz ? 'AI กำลังออกข้อสอบ... (อาจใช้เวลาสักครู่)' : '🧩 สร้าง Quiz จากไฟล์ที่เลือก' }}
+              </button>
+              <p v-if="generateQuizError" class="error-text">{{ generateQuizError }}</p>
+            </div>
+
+            <h3 class="sub-title">Quiz ที่มีอยู่แล้ว</h3>
+            <p v-if="isLoadingQuizzes" class="status-text">กำลังโหลด...</p>
+            <p v-else-if="quizzes.length === 0" class="status-text">ยังไม่มี Quiz ในวิชานี้</p>
+
+            <ul v-else class="summary-list">
+              <li v-for="q in quizzes" :key="q.quiz_id" class="summary-card quiz-card">
+                <div class="summary-link">
+                  <span class="ai-badge quiz-badge">AI ออกข้อสอบให้</span>
+                  <p class="summary-snippet">{{ q.title }}</p>
+                  <p class="summary-meta">
+                    {{ q.question_count }} ข้อ
+                    <template v-if="q.file_names.length"> · จาก {{ q.file_names.length }} ไฟล์</template>
+                    · {{ formatDate(q.created_at) }}
+                  </p>
+                  <p class="quiz-coming-soon">หน้าทำ Quiz/ตรวจแก้ไขคำถามกำลังพัฒนาต่อ — ตอนนี้ดูได้แค่ว่าสร้างสำเร็จแล้ว</p>
+                </div>
+              </li>
+            </ul>
+          </template>
         </section>
       </div>
     </template>
@@ -608,6 +758,60 @@ async function handleGenerateSummary() {
 }
 
 /* --- Studio pane --- */
+.studio-tabs {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.studio-tab {
+  padding: 0.55rem 0.9rem;
+  border: none;
+  background: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.studio-tab.is-active {
+  color: var(--indigo);
+  border-bottom-color: var(--indigo);
+}
+
+.question-count-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  margin: 0 0 0.75rem;
+}
+
+.question-count-input {
+  width: 60px;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  font-size: 0.85rem;
+}
+
+.quiz-badge {
+  color: #1e5a9c;
+  background: #e8f1fb;
+  border-color: #b9d7f2;
+}
+
+.quiz-coming-soon {
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+  margin: 0.4rem 0 0;
+  font-style: italic;
+}
+
 .generate-box {
   border: 1px solid var(--border);
   border-radius: 12px;
