@@ -207,7 +207,24 @@ const deletingDocumentId = ref(null)
 const deleteError = ref('')
 
 async function handleDeleteDocument(doc) {
-  if (!confirm(`ต้องการลบเอกสาร "${doc.file_name}" ใช่หรือไม่? การลบนี้ไม่สามารถกู้คืนได้`)) return
+  // เช็คก่อนว่าเอกสารนี้ถูกใช้สร้าง Summary ไว้กี่รายการ (นับ Summary ที่ต่างกัน)
+  // เพื่อเตือนผู้ใช้ว่า Summary เหล่านั้นจะ Chat ต่อไม่ได้ ถ้าลบเอกสารนี้ทิ้ง
+  const { data: links } = await supabase
+    .from('summary_documents')
+    .select('summary_id')
+    .eq('document_id', doc.document_id)
+
+  const affectedCount = new Set((links || []).map((l) => l.summary_id)).size
+
+  let message = `ต้องการลบเอกสาร "${doc.file_name}" ใช่หรือไม่? การลบนี้ไม่สามารถกู้คืนได้`
+  if (affectedCount > 0) {
+    message +=
+      `\n\n⚠️ คำเตือน: เอกสารนี้ถูกใช้สร้าง Summary ไว้แล้ว ${affectedCount} รายการ\n` +
+      `หากลบเอกสารนี้ Summary เหล่านั้นจะไม่สามารถใช้ฟีเจอร์แชทได้อีก ` +
+      `(เนื้อหาสรุปที่มีอยู่แล้วยังคงอ่าน/แก้ไขได้ตามปกติ)`
+  }
+
+  if (!confirm(message)) return
 
   deleteError.value = ''
   deletingDocumentId.value = doc.document_id

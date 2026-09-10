@@ -10,6 +10,10 @@ const props = defineProps({
 const summary = ref(null) // { summary_id, content, created_at, updated_at, subject_id }
 const sourceFileNames = ref([]) // ชื่อไฟล์ต้นทางทั้งหมด (รองรับทั้งกรณี 1 หรือหลายไฟล์)
 
+// ถ้าเอกสารต้นทางถูกลบไปหมดแล้ว summary จะ "กำพร้า" — Chat ใช้ไม่ได้
+// (แต่เนื้อหาสรุปยังอ่าน/แก้ไขได้ปกติ ไม่กระทบส่วนอื่น)
+const chatDisabled = computed(() => !isLoading.value && sourceFileNames.value.length === 0)
+
 const isLoading = ref(true)
 const errorMessage = ref('')
 
@@ -36,7 +40,7 @@ function scrollChatToBottom() {
 
 async function sendChatMessage(text) {
   const message = (text ?? chatInput.value).trim()
-  if (!message || isSending.value) return
+  if (!message || isSending.value || chatDisabled.value) return
 
   // ประวัติที่ส่งให้ Edge Function คือทุกข้อความ "ก่อนหน้า" ข้อความใหม่นี้
   // (ฝั่ง Client เก็บเองทั้งหมด ไม่ได้ Persist ฝั่ง Server)
@@ -225,7 +229,11 @@ onMounted(fetchSummary)
             (แชทนี้ไม่ถูกบันทึก จะหายเมื่อรีเฟรชหน้า)
           </p>
 
-          <button class="quick-action-btn" :disabled="isSending" @click="askRegenerateMore">
+          <p v-if="chatDisabled" class="chat-disabled-notice">
+            ไม่สามารถใช้งานได้เนื่องจากไฟล์หลักถูกลบไปแล้ว
+          </p>
+
+          <button class="quick-action-btn" :disabled="isSending || chatDisabled" @click="askRegenerateMore">
             ✨ ขอสรุปใหม่ให้ครบขึ้น
           </button>
 
@@ -260,10 +268,10 @@ onMounted(fetchSummary)
               type="text"
               class="chat-input"
               placeholder="พิมพ์คำถามหรือคำสั่ง..."
-              :disabled="isSending"
+              :disabled="isSending || chatDisabled"
               @keyup.enter="sendChatMessage()"
             />
-            <button class="send-btn" :disabled="isSending || !chatInput.trim()" @click="sendChatMessage()">
+            <button class="send-btn" :disabled="isSending || chatDisabled || !chatInput.trim()" @click="sendChatMessage()">
               ส่ง
             </button>
           </div>
@@ -489,6 +497,17 @@ onMounted(fetchSummary)
   color: var(--ink-faint);
   line-height: 1.5;
   margin: 0 0 0.75rem;
+}
+
+.chat-disabled-notice {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #8a5a00;
+  background: #fdf0d5;
+  border: 1px solid #f0d089;
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  margin: 0 0 0.9rem;
 }
 
 .quick-action-btn {
