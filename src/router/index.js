@@ -31,7 +31,14 @@ const routes = [
   {
     path: '/quizzes/:quizId',
     name: 'quiz-detail',
-    component: () => import('../views/QuizDetailView.vue'),
+    component: () => import('../views/Quizdetailview.vue'),
+    meta: { requiresAuth: true },
+    props: true
+  },
+  {
+    path: '/quizzes/:quizId/practice',
+    name: 'quiz-practice',
+    component: () => import('../views/Quizpracticeview.vue'),
     meta: { requiresAuth: true },
     props: true
   },

@@ -526,7 +526,7 @@ async function handleGenerateQuiz() {
 
             <ul v-else class="summary-list">
               <li v-for="q in quizzes" :key="q.quiz_id" class="summary-card quiz-card">
-                <RouterLink :to="{ name: 'quiz-detail', params: { quizId: q.quiz_id } }" class="summary-link">
+                <div class="summary-link">
                   <span class="ai-badge quiz-badge">AI ออกข้อสอบให้</span>
                   <p class="summary-snippet">{{ q.title }}</p>
                   <p class="summary-meta">
@@ -534,7 +534,15 @@ async function handleGenerateQuiz() {
                     <template v-if="q.file_names.length"> · จาก {{ q.file_names.length }} ไฟล์</template>
                     · {{ formatDate(q.created_at) }}
                   </p>
-                </RouterLink>
+                </div>
+                <div class="quiz-actions">
+                  <RouterLink :to="{ name: 'quiz-practice', params: { quizId: q.quiz_id } }" class="practice-link">
+                    ✏️ ทำข้อสอบ
+                  </RouterLink>
+                  <RouterLink :to="{ name: 'quiz-detail', params: { quizId: q.quiz_id } }" class="review-link">
+                    ตรวจสอบ/แก้ไข
+                  </RouterLink>
+                </div>
               </li>
             </ul>
           </template>
@@ -889,5 +897,41 @@ async function handleGenerateQuiz() {
   font-size: 0.75rem;
   color: var(--ink-faint);
   margin: 0;
+}
+
+.quiz-actions {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0 1rem 0.9rem;
+}
+
+.practice-link,
+.review-link {
+  flex: 1;
+  text-align: center;
+  padding: 0.5rem 0.7rem;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.practice-link {
+  background: var(--indigo);
+  color: #ffffff;
+}
+
+.practice-link:hover {
+  background: var(--indigo-dark);
+}
+
+.review-link {
+  border: 1px solid var(--border-strong);
+  color: var(--ink);
+  background: var(--card);
+}
+
+.review-link:hover {
+  border-color: var(--ink-faint);
 }
 </style>
