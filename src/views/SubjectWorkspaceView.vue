@@ -14,15 +14,17 @@ const subject = ref(null)
 const documents = ref([])
 const summaries = ref([]) // [{ summary_id, content, created_at, file_names: [...] }]
 const quizzes = ref([]) // [{ quiz_id, title, created_at, question_count, file_names: [...] }]
+const flashcardSets = ref([]) // [{ flashcard_set_id, title, created_at, card_count, file_names: [...] }]
 
 const isLoadingSubject = ref(true)
 const isLoadingDocuments = ref(true)
 const isLoadingSummaries = ref(true)
 const isLoadingQuizzes = ref(true)
+const isLoadingFlashcardSets = ref(true)
 const errorMessage = ref('')
 
-// Studio Panel มี 2 แท็บ: สร้าง Summary กับสร้าง Quiz ใช้ selectedDocumentIds ชุดเดียวกัน
-const activeStudioTab = ref('summary') // 'summary' | 'quiz'
+// Studio Panel มี 3 แท็บ: สร้าง Summary / Quiz / Flashcard ใช้ selectedDocumentIds ชุดเดียวกัน
+const activeStudioTab = ref('summary') // 'summary' | 'quiz' | 'flashcard'
 
 const STATUS_LABEL = {
   processing: 'กำลังประมวลผล',
@@ -140,6 +142,50 @@ async function fetchQuizzes() {
   isLoadingQuizzes.value = false
 }
 
+// ดึง Flashcard Set ของวิชานี้ทั้งหมด แล้วต่อด้วยชื่อไฟล์ต้นทาง + จำนวนใบ
+// ผ่าน Junction Table (flashcard_set_documents) เหมือน Pattern ของ fetchQuizzes
+async function fetchFlashcardSets() {
+  isLoadingFlashcardSets.value = true
+
+  const { data: rows, error } = await supabase
+    .from('flashcard_sets')
+    .select('flashcard_set_id, title, created_at')
+    .eq('subject_id', props.id)
+    .order('created_at', { ascending: false })
+
+  if (error || !rows) {
+    isLoadingFlashcardSets.value = false
+    return
+  }
+
+  const setIds = rows.map((r) => r.flashcard_set_id)
+  let fileNamesBySet = {}
+  let cardCountBySet = {}
+
+  if (setIds.length > 0) {
+    const [{ data: links }, { data: cardRows }] = await Promise.all([
+      supabase.from('flashcard_set_documents').select('flashcard_set_id, documents ( file_name )').in('flashcard_set_id', setIds),
+      supabase.from('flashcards').select('flashcard_set_id').in('flashcard_set_id', setIds)
+    ])
+
+    for (const link of links || []) {
+      const list = fileNamesBySet[link.flashcard_set_id] || []
+      list.push(link.documents?.file_name)
+      fileNamesBySet[link.flashcard_set_id] = list
+    }
+    for (const c of cardRows || []) {
+      cardCountBySet[c.flashcard_set_id] = (cardCountBySet[c.flashcard_set_id] || 0) + 1
+    }
+  }
+
+  flashcardSets.value = rows.map((r) => ({
+    ...r,
+    file_names: (fileNamesBySet[r.flashcard_set_id] || []).filter(Boolean),
+    card_count: cardCountBySet[r.flashcard_set_id] || 0
+  }))
+  isLoadingFlashcardSets.value = false
+}
+
 function fileKind(fileName) {
   const ext = (fileName || '').split('.').pop()?.toLowerCase()
   if (ext === 'pdf') return 'PDF'
@@ -160,7 +206,7 @@ function snippet(content, length = 110) {
 
 onMounted(async () => {
   await Promise.all([fetchSubject(), fetchDocuments()])
-  await Promise.all([fetchSummaries(), fetchQuizzes()])
+  await Promise.all([fetchSummaries(), fetchQuizzes(), fetchFlashcardSets()])
 })
 
 // --- อัปโหลดเอกสาร ---
@@ -258,13 +304,15 @@ const deleteError = ref('')
 async function handleDeleteDocument(doc) {
   // เช็คก่อนว่าเอกสารนี้ถูกใช้สร้าง Summary/Quiz ไว้กี่รายการ
   // เพื่อเตือนผู้ใช้ก่อนลบ (Summary เสีย Chat, Quiz จะไม่มี Reference กลับไปไฟล์ต้นทาง)
-  const [{ data: summaryLinks }, { data: quizLinks }] = await Promise.all([
+  const [{ data: summaryLinks }, { data: quizLinks }, { data: flashcardLinks }] = await Promise.all([
     supabase.from('summary_documents').select('summary_id').eq('document_id', doc.document_id),
-    supabase.from('quiz_documents').select('quiz_id').eq('document_id', doc.document_id)
+    supabase.from('quiz_documents').select('quiz_id').eq('document_id', doc.document_id),
+    supabase.from('flashcard_set_documents').select('flashcard_set_id').eq('document_id', doc.document_id)
   ])
 
   const affectedSummaryCount = new Set((summaryLinks || []).map((l) => l.summary_id)).size
   const affectedQuizCount = new Set((quizLinks || []).map((l) => l.quiz_id)).size
+  const affectedFlashcardCount = new Set((flashcardLinks || []).map((l) => l.flashcard_set_id)).size
 
   let message = `ต้องการลบเอกสาร "${doc.file_name}" ใช่หรือไม่? การลบนี้ไม่สามารถกู้คืนได้`
   if (affectedSummaryCount > 0) {
@@ -275,6 +323,9 @@ async function handleDeleteDocument(doc) {
   }
   if (affectedQuizCount > 0) {
     message += `\n\n⚠️ เอกสารนี้ยังถูกใช้สร้าง Quiz ไว้แล้ว ${affectedQuizCount} ชุด (ตัว Quiz ยังใช้ทำแบบทดสอบได้ปกติ แค่จะไม่เหลือ Reference ไปยังไฟล์ต้นทางนี้)`
+  }
+  if (affectedFlashcardCount > 0) {
+    message += `\n\n⚠️ เอกสารนี้ยังถูกใช้สร้าง Flashcard ไว้แล้ว ${affectedFlashcardCount} ชุด (ตัว Flashcard ยังทบทวนได้ปกติ แค่จะไม่เหลือ Reference ไปยังไฟล์ต้นทางนี้)`
   }
 
   if (!confirm(message)) return
@@ -355,6 +406,34 @@ async function handleGenerateQuiz() {
     generateQuizError.value = err.message || 'สร้าง Quiz ไม่สำเร็จ'
   } finally {
     isGeneratingQuiz.value = false
+  }
+}
+
+// --- สร้าง Flashcard รวมจากไฟล์ที่เลือก (รองรับ 1 หรือหลายไฟล์ เหมือน Summary/Quiz) ---
+const isGeneratingFlashcard = ref(false)
+const generateFlashcardError = ref('')
+const flashcardCardCount = ref(12) // ตรงกับ Default ของ Edge Function (1-40 ใบ)
+
+async function handleGenerateFlashcard() {
+  if (selectedDocumentIds.value.length === 0) return
+
+  isGeneratingFlashcard.value = true
+  generateFlashcardError.value = ''
+
+  try {
+    const { data, error } = await supabase.functions.invoke('generate-flashcard', {
+      body: { document_ids: selectedDocumentIds.value, card_count: flashcardCardCount.value }
+    })
+
+    if (error) throw new Error(error.message || 'เรียก Edge Function ไม่สำเร็จ')
+    if (data?.error) throw new Error(data.error)
+
+    selectedDocumentIds.value = []
+    await fetchFlashcardSets()
+  } catch (err) {
+    generateFlashcardError.value = err.message || 'สร้าง Flashcard ไม่สำเร็จ'
+  } finally {
+    isGeneratingFlashcard.value = false
   }
 }
 </script>
@@ -456,6 +535,14 @@ async function handleGenerateQuiz() {
             >
               🧩 Quiz
             </button>
+            <button
+              type="button"
+              class="studio-tab"
+              :class="{ 'is-active': activeStudioTab === 'flashcard' }"
+              @click="activeStudioTab = 'flashcard'"
+            >
+              🎴 Flashcard
+            </button>
           </div>
 
           <!-- แท็บ Summary -->
@@ -543,6 +630,55 @@ async function handleGenerateQuiz() {
                     ตรวจสอบ/แก้ไข
                   </RouterLink>
                 </div>
+              </li>
+            </ul>
+          </template>
+
+          <!-- แท็บ Flashcard -->
+          <template v-else-if="activeStudioTab === 'flashcard'">
+            <div class="generate-box">
+              <p class="generate-status">
+                <template v-if="selectedCount === 0">เลือกเอกสารทางซ้ายเพื่อเริ่มสร้าง Flashcard</template>
+                <template v-else>เลือกไว้ {{ selectedCount }} ไฟล์</template>
+              </p>
+              <label class="question-count-label">
+                จำนวนใบ
+                <input
+                  type="number"
+                  v-model.number="flashcardCardCount"
+                  min="1"
+                  max="40"
+                  class="question-count-input"
+                />
+              </label>
+              <button
+                class="generate-btn"
+                :disabled="selectedCount === 0 || isGeneratingFlashcard"
+                @click="handleGenerateFlashcard"
+              >
+                {{ isGeneratingFlashcard ? 'AI กำลังทำ Flashcard... (อาจใช้เวลาสักครู่)' : '🎴 สร้าง Flashcard จากไฟล์ที่เลือก' }}
+              </button>
+              <p v-if="generateFlashcardError" class="error-text">{{ generateFlashcardError }}</p>
+            </div>
+
+            <h3 class="sub-title">Flashcard ที่มีอยู่แล้ว</h3>
+            <p v-if="isLoadingFlashcardSets" class="status-text">กำลังโหลด...</p>
+            <p v-else-if="flashcardSets.length === 0" class="status-text">ยังไม่มี Flashcard ในวิชานี้</p>
+
+            <ul v-else class="summary-list">
+              <li v-for="f in flashcardSets" :key="f.flashcard_set_id" class="summary-card">
+                <RouterLink
+                  :to="{ name: 'flashcard-set-detail', params: { flashcardSetId: f.flashcard_set_id } }"
+                  class="summary-link"
+                >
+                  <span class="ai-badge flashcard-badge">AI ทำ Flashcard ให้</span>
+                  <p class="summary-snippet">{{ f.title }}</p>
+                  <p class="summary-meta">
+                    {{ f.card_count }} ใบ
+                    <template v-if="f.file_names.length"> · จาก {{ f.file_names.length }} ไฟล์</template>
+                    · {{ formatDate(f.created_at) }}
+                  </p>
+                </RouterLink>
               </li>
             </ul>
           </template>
@@ -810,6 +946,12 @@ async function handleGenerateQuiz() {
   color: #1e5a9c;
   background: #e8f1fb;
   border-color: #b9d7f2;
+}
+
+.flashcard-badge {
+  color: #7a3e9d;
+  background: #f3e8fb;
+  border-color: #ddb9f2;
 }
 
 .generate-box {

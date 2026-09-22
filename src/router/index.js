@@ -31,14 +31,21 @@ const routes = [
   {
     path: '/quizzes/:quizId',
     name: 'quiz-detail',
-    component: () => import('../views/Quizdetailview.vue'),
+    component: () => import('../views/QuizDetailView.vue'),
     meta: { requiresAuth: true },
     props: true
   },
   {
     path: '/quizzes/:quizId/practice',
     name: 'quiz-practice',
-    component: () => import('../views/Quizpracticeview.vue'),
+    component: () => import('../views/QuizPracticeView.vue'),
+    meta: { requiresAuth: true },
+    props: true
+  },
+  {
+    path: '/flashcard-sets/:flashcardSetId',
+    name: 'flashcard-set-detail',
+    component: () => import('../views/FlashcardSetDetailView.vue'),
     meta: { requiresAuth: true },
     props: true
   },

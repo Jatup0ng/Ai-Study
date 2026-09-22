@@ -23,7 +23,7 @@ const isSaving = ref(false)
 const saveError = ref('')
 
 // --- Studio Panel: Chat / Quiz / Flashcard ---
-const activeTab = ref('chat') // 'chat' | 'quiz' | 'flashcard' — Quiz/Flashcard ยังไม่มี Feature จริง (รอ Sprint 2 ข้อ 14-17)
+const activeTab = ref('chat') // 'chat' | 'quiz' | 'flashcard' — Quiz ยังไม่เปิดในนี้ (รอออกแบบว่าจะโยงกับ Summary ยังไง), Flashcard เปิดใช้แล้ว
 
 // Chat ไม่เก็บถาวรใน Database (ตามที่ยืนยันไว้) — หายเมื่อ Refresh หน้า
 const chatMessages = ref([]) // [{ role: 'user' | 'model', text: string }]
@@ -77,6 +77,44 @@ async function copyMessageText(text) {
   } catch {
     // Clipboard API ใช้ไม่ได้ (เช่น ไม่ใช่ HTTPS) — เงียบไว้ ไม่ใช่ Error ร้ายแรง
   }
+}
+
+// --- Flashcard Tab: โชว์ Flashcard Set ทั้งหมด "ของวิชานี้" ---
+// หมายเหตุ: Schema ไม่มีความสัมพันธ์ตรงระหว่าง Summary กับ Flashcard Set
+// (คนละก้อนที่ Generate แยกกันจากเอกสารต้นทาง) จึงโชว์ตาม subject_id
+// เดียวกันแทน ไม่ใช่ "Flashcard ของ Summary นี้โดยเฉพาะ"
+const flashcardSets = ref([])
+const isLoadingFlashcards = ref(false)
+const flashcardsLoaded = ref(false)
+const flashcardsError = ref('')
+
+async function loadFlashcardsIfNeeded() {
+  if (flashcardsLoaded.value || !summary.value?.subject_id) return
+
+  isLoadingFlashcards.value = true
+  flashcardsError.value = ''
+
+  const { data, error } = await supabase
+    .from('flashcard_sets')
+    .select('flashcard_set_id, title, created_at')
+    .eq('subject_id', summary.value.subject_id)
+    .order('created_at', { ascending: false })
+
+  if (error) flashcardsError.value = 'โหลด Flashcard ไม่สำเร็จ: ' + error.message
+  else flashcardSets.value = data || []
+
+  flashcardsLoaded.value = true
+  isLoadingFlashcards.value = false
+}
+
+function selectTab(tab) {
+  activeTab.value = tab
+  if (tab === 'flashcard') loadFlashcardsIfNeeded()
+}
+
+function formatDateShort(isoString) {
+  if (!isoString) return ''
+  return new Date(isoString).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 async function fetchSummary() {
@@ -218,8 +256,12 @@ onMounted(fetchSummary)
           <button class="studio-tab disabled" disabled title="เร็วๆ นี้">
             Quiz <span class="soon-label">เร็วๆ นี้</span>
           </button>
-          <button class="studio-tab disabled" disabled title="เร็วๆ นี้">
-            Flashcard <span class="soon-label">เร็วๆ นี้</span>
+          <button
+            class="studio-tab"
+            :class="{ active: activeTab === 'flashcard' }"
+            @click="selectTab('flashcard')"
+          >
+            Flashcard
           </button>
         </div>
 
@@ -275,6 +317,27 @@ onMounted(fetchSummary)
               ส่ง
             </button>
           </div>
+        </div>
+
+        <div v-else-if="activeTab === 'flashcard'" class="flashcard-tab">
+          <p class="chat-hint">
+            Flashcard ทั้งหมดในวิชานี้ (ไม่จำกัดเฉพาะที่มาจากไฟล์เดียวกับ Summary นี้)
+          </p>
+
+          <p v-if="isLoadingFlashcards" class="status-text">กำลังโหลด...</p>
+          <p v-if="flashcardsError" class="error-text">{{ flashcardsError }}</p>
+          <p v-if="flashcardsLoaded && !isLoadingFlashcards && flashcardSets.length === 0" class="chat-empty">
+            ยังไม่มี Flashcard ในวิชานี้ — ไปสร้างได้จากหน้าวิชา
+          </p>
+
+          <ul v-if="flashcardSets.length > 0" class="flashcard-mini-list">
+            <li v-for="f in flashcardSets" :key="f.flashcard_set_id">
+              <RouterLink :to="{ name: 'flashcard-set-detail', params: { flashcardSetId: f.flashcard_set_id } }">
+                <span class="flashcard-mini-title">{{ f.title }}</span>
+                <span class="flashcard-mini-date">{{ formatDateShort(f.created_at) }}</span>
+              </RouterLink>
+            </li>
+          </ul>
         </div>
       </aside>
     </div>
@@ -624,5 +687,44 @@ onMounted(fetchSummary)
 .send-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* --- Flashcard Tab --- */
+.flashcard-mini-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.flashcard-mini-list a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--ink);
+}
+
+.flashcard-mini-list a:hover {
+  border-color: var(--indigo);
+}
+
+.flashcard-mini-title {
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flashcard-mini-date {
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+  white-space: nowrap;
 }
 </style>
