@@ -29,6 +29,13 @@ const routes = [
     props: true
   },
   {
+    path: '/quizzes/:quizId',
+    name: 'quiz-detail',
+    component: () => import('../views/QuizDetailView.vue'),
+    meta: { requiresAuth: true },
+    props: true
+  },
+  {
     path: '/share/:token',
     name: 'share-preview',
     component: () => import('../views/SharePreviewView.vue'),

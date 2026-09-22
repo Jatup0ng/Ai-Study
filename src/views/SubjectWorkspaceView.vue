@@ -526,7 +526,7 @@ async function handleGenerateQuiz() {
 
             <ul v-else class="summary-list">
               <li v-for="q in quizzes" :key="q.quiz_id" class="summary-card quiz-card">
-                <div class="summary-link">
+                <RouterLink :to="{ name: 'quiz-detail', params: { quizId: q.quiz_id } }" class="summary-link">
                   <span class="ai-badge quiz-badge">AI ออกข้อสอบให้</span>
                   <p class="summary-snippet">{{ q.title }}</p>
                   <p class="summary-meta">
@@ -534,8 +534,7 @@ async function handleGenerateQuiz() {
                     <template v-if="q.file_names.length"> · จาก {{ q.file_names.length }} ไฟล์</template>
                     · {{ formatDate(q.created_at) }}
                   </p>
-                  <p class="quiz-coming-soon">หน้าทำ Quiz/ตรวจแก้ไขคำถามกำลังพัฒนาต่อ — ตอนนี้ดูได้แค่ว่าสร้างสำเร็จแล้ว</p>
-                </div>
+                </RouterLink>
               </li>
             </ul>
           </template>
@@ -803,13 +802,6 @@ async function handleGenerateQuiz() {
   color: #1e5a9c;
   background: #e8f1fb;
   border-color: #b9d7f2;
-}
-
-.quiz-coming-soon {
-  font-size: 0.72rem;
-  color: var(--ink-faint);
-  margin: 0.4rem 0 0;
-  font-style: italic;
 }
 
 .generate-box {
