@@ -31,14 +31,14 @@ const routes = [
   {
     path: '/quizzes/:quizId',
     name: 'quiz-detail',
-    component: () => import('../views/QuizDetailView.vue'),
+    component: () => import('../views/QuizDetail.vue/index.js'),
     meta: { requiresAuth: true },
     props: true
   },
   {
     path: '/quizzes/:quizId/practice',
     name: 'quiz-practice',
-    component: () => import('../views/QuizPracticeView.vue'),
+    component: () => import('../views/QuizPractice.vue/index.js'),
     meta: { requiresAuth: true },
     props: true
   },
