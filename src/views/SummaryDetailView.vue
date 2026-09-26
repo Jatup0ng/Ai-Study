@@ -23,7 +23,7 @@ const isSaving = ref(false)
 const saveError = ref('')
 
 // --- Studio Panel: Chat / Quiz / Flashcard ---
-const activeTab = ref('chat') // 'chat' | 'quiz' | 'flashcard' — Quiz ยังไม่เปิดในนี้ (รอออกแบบว่าจะโยงกับ Summary ยังไง), Flashcard เปิดใช้แล้ว
+const activeTab = ref('chat') // 'chat' | 'quiz' | 'flashcard'
 
 // Chat ไม่เก็บถาวรใน Database (ตามที่ยืนยันไว้) — หายเมื่อ Refresh หน้า
 const chatMessages = ref([]) // [{ role: 'user' | 'model', text: string }]
@@ -79,6 +79,33 @@ async function copyMessageText(text) {
   }
 }
 
+// --- Quiz Tab: โชว์ Quiz ทั้งหมด "ของวิชานี้" — Pattern เดียวกับ Flashcard Tab ---
+// หมายเหตุ: Schema ไม่มีความสัมพันธ์ตรงระหว่าง Summary กับ Quiz (คนละก้อนที่ Generate
+// แยกกันจากเอกสารต้นทาง) จึงโชว์ตาม subject_id เดียวกันแทน ไม่ใช่ "Quiz ของ Summary นี้โดยเฉพาะ"
+const quizzes = ref([])
+const isLoadingQuizzes = ref(false)
+const quizzesLoaded = ref(false)
+const quizzesError = ref('')
+
+async function loadQuizzesIfNeeded() {
+  if (quizzesLoaded.value || !summary.value?.subject_id) return
+
+  isLoadingQuizzes.value = true
+  quizzesError.value = ''
+
+  const { data, error } = await supabase
+    .from('quizzes')
+    .select('quiz_id, title, created_at')
+    .eq('subject_id', summary.value.subject_id)
+    .order('created_at', { ascending: false })
+
+  if (error) quizzesError.value = 'โหลด Quiz ไม่สำเร็จ: ' + error.message
+  else quizzes.value = data || []
+
+  quizzesLoaded.value = true
+  isLoadingQuizzes.value = false
+}
+
 // --- Flashcard Tab: โชว์ Flashcard Set ทั้งหมด "ของวิชานี้" ---
 // หมายเหตุ: Schema ไม่มีความสัมพันธ์ตรงระหว่าง Summary กับ Flashcard Set
 // (คนละก้อนที่ Generate แยกกันจากเอกสารต้นทาง) จึงโชว์ตาม subject_id
@@ -109,6 +136,7 @@ async function loadFlashcardsIfNeeded() {
 
 function selectTab(tab) {
   activeTab.value = tab
+  if (tab === 'quiz') loadQuizzesIfNeeded()
   if (tab === 'flashcard') loadFlashcardsIfNeeded()
 }
 
@@ -253,10 +281,13 @@ onMounted(fetchSummary)
           >
             แชท
           </button>
-          <button class="studio-tab disabled" disabled title="เร็วๆ นี้">
-            Quiz <span class="soon-label">เร็วๆ นี้</span>
-          </button>
           <button
+            class="studio-tab"
+            :class="{ active: activeTab === 'quiz' }"
+            @click="selectTab('quiz')"
+          >
+            Quiz
+          </button>          <button
             class="studio-tab"
             :class="{ active: activeTab === 'flashcard' }"
             @click="selectTab('flashcard')"
@@ -317,6 +348,30 @@ onMounted(fetchSummary)
               ส่ง
             </button>
           </div>
+        </div>
+
+        <div v-else-if="activeTab === 'quiz'" class="flashcard-tab">
+          <p class="chat-hint">
+            Quiz ทั้งหมดในวิชานี้ (ไม่จำกัดเฉพาะที่มาจากไฟล์เดียวกับ Summary นี้)
+          </p>
+
+          <p v-if="isLoadingQuizzes" class="status-text">กำลังโหลด...</p>
+          <p v-if="quizzesError" class="error-text">{{ quizzesError }}</p>
+          <p v-if="quizzesLoaded && !isLoadingQuizzes && quizzes.length === 0" class="chat-empty">
+            ยังไม่มี Quiz ในวิชานี้ — ไปสร้างได้จากหน้าวิชา
+          </p>
+
+          <ul v-if="quizzes.length > 0" class="flashcard-mini-list">
+            <li v-for="q in quizzes" :key="q.quiz_id" class="quiz-mini-item">
+              <RouterLink :to="{ name: 'quiz-practice', params: { quizId: q.quiz_id } }" class="quiz-mini-main">
+                <span class="flashcard-mini-title">{{ q.title }}</span>
+                <span class="flashcard-mini-date">{{ formatDateShort(q.created_at) }}</span>
+              </RouterLink>
+              <RouterLink :to="{ name: 'quiz-detail', params: { quizId: q.quiz_id } }" class="quiz-mini-review">
+                ตรวจสอบ/แก้ไข
+              </RouterLink>
+            </li>
+          </ul>
         </div>
 
         <div v-else-if="activeTab === 'flashcard'" class="flashcard-tab">
@@ -726,5 +781,43 @@ onMounted(fetchSummary)
   font-size: 0.72rem;
   color: var(--ink-faint);
   white-space: nowrap;
+}
+
+.quiz-mini-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.quiz-mini-item .quiz-mini-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  text-decoration: none;
+  color: var(--ink);
+  min-width: 0;
+}
+
+.quiz-mini-item:hover {
+  border-color: var(--indigo);
+}
+
+.quiz-mini-review {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--indigo);
+  text-decoration: none;
+  padding: 0.4rem 0.6rem;
+  white-space: nowrap;
+}
+
+.quiz-mini-review:hover {
+  text-decoration: underline;
 }
 </style>
