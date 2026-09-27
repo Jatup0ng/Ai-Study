@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { supabase } from '../supabaseClient'
+import ShareButton from '../component/ShareButton.vue'
 
 const props = defineProps({
   quizId: { type: String, required: true }
@@ -239,6 +240,10 @@ onMounted(fetchQuiz)
             {{ questions.length }} ข้อ · สร้างเมื่อ {{ formatDateTime(quiz.created_at) }}
           </p>
         </div>
+
+        <div class="header-actions">
+          <ShareButton content-type="quiz" :content-id="quizId" />
+        </div>
       </header>
 
       <p class="review-hint">
@@ -339,7 +344,18 @@ onMounted(fetchQuiz)
 }
 
 .page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
   margin-bottom: 0.5rem;
+}
+
+.header-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  flex-shrink: 0;
 }
 
 .ai-badge {

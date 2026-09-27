@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { supabase } from '../supabaseClient'
+import ShareButton from '../component/ShareButton.vue'
 
 const props = defineProps({
   summaryId: { type: String, required: true }
@@ -253,7 +254,10 @@ onMounted(fetchSummary)
             </p>
             <p class="timestamp-label">แก้ไขล่าสุด {{ formatDateTime(summary.updated_at) }}</p>
           </div>
-          <button v-if="!isEditing" class="edit-btn" @click="startEdit">แก้ไข</button>
+          <div class="header-actions">
+            <ShareButton content-type="summary" :content-id="summaryId" />
+            <button v-if="!isEditing" class="edit-btn" @click="startEdit">แก้ไข</button>
+          </div>
         </header>
 
         <p v-if="saveError" class="error-text">{{ saveError }}</p>
@@ -437,6 +441,13 @@ onMounted(fetchSummary)
   justify-content: space-between;
   gap: 1rem;
   margin-bottom: 1.5rem;
+}
+
+.header-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  flex-shrink: 0;
 }
 
 .ai-badge {

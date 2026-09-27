@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { supabase } from '../supabaseClient'
+import ShareButton from '../component/ShareButton.vue'
 
 const props = defineProps({
   flashcardSetId: { type: String, required: true }
@@ -87,8 +88,14 @@ onMounted(fetchFlashcardSet)
 
     <template v-else-if="flashcardSet">
       <header class="page-header">
-        <h1>{{ flashcardSet.title }}</h1>
-        <p class="hint-label">คลิกที่การ์ดเพื่อพลิกดูคำตอบ — {{ cards.length }} ใบ</p>
+        <div class="header-main">
+          <h1>{{ flashcardSet.title }}</h1>
+          <p class="hint-label">คลิกที่การ์ดเพื่อพลิกดูคำตอบ — {{ cards.length }} ใบ</p>
+        </div>
+
+        <div class="header-actions">
+          <ShareButton content-type="flashcard_set" :content-id="flashcardSetId" />
+        </div>
       </header>
 
       <div class="bulk-actions" v-if="cards.length > 0">
@@ -143,7 +150,18 @@ onMounted(fetchFlashcardSet)
 }
 
 .page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
   margin-bottom: 1.25rem;
+}
+
+.header-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  flex-shrink: 0;
 }
 
 .page-header h1 {
