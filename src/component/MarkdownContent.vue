@@ -74,19 +74,20 @@ const html = computed(() => {
   border-bottom: 3px solid var(--indigo);
 }
 .md :deep(h2) {
-  font-size: 1.2rem;
-  margin: 2rem 0 0.8rem;
-  padding: 0.5rem 0.9rem;
-  background: var(--paper);
-  border-left: 5px solid var(--indigo);
-  border-radius: 0 8px 8px 0;
+  font-family: var(--font-serif);
+  font-size: 1.3rem;
+  margin: 2.2rem 0 0.8rem;
+  padding: 0 0 0.45rem;
+  border-bottom: 1px solid var(--border);
+  scroll-margin-top: 1.25rem;
 }
 .md :deep(h3) {
   font-size: 1.05rem;
   margin: 1.4rem 0 0.4rem;
-  color: var(--indigo);
+  color: var(--primary);
+  scroll-margin-top: 1.25rem;
 }
-.md :deep(h3::before) { content: '▸ '; color: var(--highlighter); }
+.md :deep(h3::before) { content: '▸ '; color: var(--accent); }
 .md :deep(h4) { font-size: 0.95rem; margin: 1rem 0 0.3rem; color: var(--ink-soft); }
 
 .md :deep(p) { margin: 0.6em 0; }
@@ -111,12 +112,11 @@ const html = computed(() => {
 /* blockquote = กล่องคำนิยาม / ข้อควรจำ */
 .md :deep(blockquote) {
   margin: 1rem 0;
-  padding: 0.7rem 1.1rem;
-  background: var(--highlighter-soft);
-  border: 1px solid var(--highlighter);
-  border-left: 5px solid var(--highlighter);
-  border-radius: 8px;
-  color: var(--ink);
+  padding: 0.8rem 1.1rem;
+  background: var(--hover);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
 }
 .md :deep(blockquote p) { margin: 0.3em 0; }
 
@@ -146,16 +146,16 @@ const html = computed(() => {
   font-size: 0.92rem;
 }
 .md :deep(th), .md :deep(td) { border: 1px solid var(--border-strong); padding: 0.5rem 0.8rem; text-align: left; }
-.md :deep(th) { background: var(--indigo); color: #fff; font-weight: 600; }
-.md :deep(tr:nth-child(even) td) { background: var(--paper); }
+.md :deep(th) { background: var(--hover); color: var(--text); font-weight: 600; }
+.md :deep(tr:nth-child(even) td) { background: color-mix(in srgb, var(--hover) 45%, transparent); }
 
 /* สูตรสำคัญ (บรรทัดแยก) เป็นการ์ดกลางหน้า */
 .md :deep(.katex-display) {
   margin: 1rem 0;
   padding: 0.8rem 1rem;
-  background: var(--paper);
+  background: var(--hover);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   overflow-x: auto;
   overflow-y: hidden;
 }

@@ -1,6 +1,5 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import AppShell from '../component/AppShell.vue'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../composables/useAuth'
 
@@ -176,8 +175,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <AppShell>
-    <div class="page">
+  <div class="page">
       <header class="page-header">
         <div>
           <h1>{{ greeting }}<template v-if="firstName">, {{ firstName }}</template></h1>
@@ -249,8 +247,7 @@ onMounted(() => {
           </article>
         </div>
       </section>
-    </div>
-  </AppShell>
+  </div>
 </template>
 
 <style scoped>

@@ -9,45 +9,52 @@ const routes = [
     meta: { requiresAuth: false }
   },
   {
-    path: '/subjects',
-    name: 'subjects',
-    component: () => import('../views/SubjectListView.vue'),
-    meta: { requiresAuth: true }
-  },
-  {
-    path: '/subjects/:id',
-    name: 'subject-workspace',
-    component: () => import('../views/SubjectWorkspaceView.vue'),
+    // Layout หลัก (แถบข้าง + พื้นที่เนื้อหา) ครอบทุกหน้าที่ต้อง Login
+    path: '/',
+    component: () => import('../component/AppLayout.vue'),
     meta: { requiresAuth: true },
-    props: true
-  },
-  {
-    path: '/summaries/:summaryId',
-    name: 'summary-detail',
-    component: () => import('../views/SummaryDetailView.vue'),
-    meta: { requiresAuth: true },
-    props: true
-  },
-  {
-    path: '/quizzes/:quizId',
-    name: 'quiz-detail',
-    component: () => import('../views/QuizDetailView.vue'),
-    meta: { requiresAuth: true },
-    props: true
-  },
-  {
-    path: '/quizzes/:quizId/practice',
-    name: 'quiz-practice',
-    component: () => import('../views/QuizPracticeView.vue'),
-    meta: { requiresAuth: true },
-    props: true
-  },
-  {
-    path: '/flashcard-sets/:flashcardSetId',
-    name: 'flashcard-set-detail',
-    component: () => import('../views/FlashcardSetDetailView.vue'),
-    meta: { requiresAuth: true },
-    props: true
+    children: [
+      {
+        path: 'subjects',
+        name: 'subjects',
+        component: () => import('../views/SubjectListView.vue')
+      },
+      {
+        path: 'subjects/:id',
+        name: 'subject-workspace',
+        component: () => import('../views/SubjectWorkspaceView.vue'),
+        props: true
+      },
+      {
+        path: 'summaries/:summaryId',
+        name: 'summary-detail',
+        component: () => import('../views/SummaryDetailView.vue'),
+        props: true
+      },
+      {
+        path: 'quizzes/:quizId',
+        name: 'quiz-detail',
+        component: () => import('../views/QuizDetailView.vue'),
+        props: true
+      },
+      {
+        path: 'quizzes/:quizId/practice',
+        name: 'quiz-practice',
+        component: () => import('../views/QuizPracticeView.vue'),
+        props: true
+      },
+      {
+        path: 'flashcard-sets/:flashcardSetId',
+        name: 'flashcard-set-detail',
+        component: () => import('../views/FlashcardSetDetailView.vue'),
+        props: true
+      },
+      {
+        // Fallback: '/' ไปหน้าหลักของแอป
+        path: '',
+        redirect: { name: 'subjects' }
+      }
+    ]
   },
   {
     path: '/share/:token',
@@ -55,11 +62,6 @@ const routes = [
     component: () => import('../views/SharePreviewView.vue'),
     meta: { requiresAuth: false }, // ต้องเปิดให้คนไม่ Login เข้าดู Preview ได้ (BR-11)
     props: true
-  },
-  {
-    // Fallback: unknown paths go to the main app entry point
-    path: '/',
-    redirect: '/subjects'
   },
   {
     path: '/:pathMatch(.*)*',
