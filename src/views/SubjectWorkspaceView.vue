@@ -309,6 +309,64 @@ function toggleDocument(docId) {
 
 const selectedCount = computed(() => selectedDocumentIds.value.length)
 
+// --- ลบเนื้อหา (Summary / Quiz / Flashcard Set) ---
+// ลบแค่เนื้อหานั้น ไม่ลบไฟล์ต้นทาง (ไฟล์อาจใช้กับเนื้อหาอื่นอยู่ — ลบไฟล์แยกที่ปุ่มลบเอกสาร)
+// DB ตั้ง ON DELETE CASCADE ไว้แล้ว: ตารางเชื่อมไฟล์ / คำถาม+ตัวเลือก / ประวัติทำควิส / บัตร / ลิงก์แชร์ จะถูกลบตามอัตโนมัติ
+// สำเนาที่คนอื่น Clone ไปแล้วเป็นของเขาเอง (source_*_id เป็น SET NULL) ไม่กระทบ
+const CONTENT_KINDS = {
+  summary: { table: 'summaries', idCol: 'summary_id', label: 'สรุป' },
+  quiz: { table: 'quizzes', idCol: 'quiz_id', label: 'Quiz' },
+  flashcard_set: { table: 'flashcard_sets', idCol: 'flashcard_set_id', label: 'Flashcard' }
+}
+const deletingContentKey = ref('') // เช่น 'quiz:12' (กันกดซ้ำ + แสดง ... บนปุ่ม)
+const deleteContentError = ref('')
+
+async function handleDeleteContent(kind, id, displayName) {
+  const cfg = CONTENT_KINDS[kind]
+  deleteContentError.value = ''
+
+  // เช็คของที่จะหายไปพร้อมกัน เพื่อเตือนผู้ใช้ให้ตรงความจริง
+  const checks = [
+    supabase.from('shares').select('share_id', { count: 'exact', head: true }).eq(cfg.idCol, id).eq('is_active', true)
+  ]
+  if (kind === 'quiz') {
+    checks.push(supabase.from('quiz_attempts').select('attempt_id', { count: 'exact', head: true }).eq('quiz_id', id))
+  }
+  const [shareRes, attemptRes] = await Promise.all(checks)
+  const activeShares = shareRes?.count || 0
+  const attempts = attemptRes?.count || 0
+
+  let message = `ต้องการลบ${cfg.label} "${displayName}" ใช่หรือไม่? การลบนี้ไม่สามารถกู้คืนได้`
+  if (kind === 'quiz' && attempts > 0) {
+    message += `\n\n⚠️ ประวัติการทำแบบทดสอบ ${attempts} ครั้งของ Quiz นี้จะถูกลบไปด้วย`
+  }
+  if (activeShares > 0) {
+    message +=
+      `\n\n⚠️ ${cfg.label}นี้มีลิงก์แชร์ที่เปิดอยู่ หลังลบแล้วลิงก์จะใช้ไม่ได้ ` +
+      `(คนที่ Clone ไปก่อนหน้านี้ยังมีสำเนาของตัวเองอยู่ ไม่ได้รับผลกระทบ)`
+  }
+  message += `\n\nไฟล์ต้นทางจะไม่ถูกลบ`
+
+  if (!confirm(message)) return
+
+  const key = `${kind}:${id}`
+  deletingContentKey.value = key
+  try {
+    // .select() เพื่อเช็คว่าลบได้จริง (ถ้า RLS ไม่อนุญาต Supabase จะไม่ error แต่ลบ 0 แถว)
+    const { data, error } = await supabase.from(cfg.table).delete().eq(cfg.idCol, id).select(cfg.idCol)
+    if (error) throw error
+    if (!data || data.length === 0) throw new Error('ไม่พบรายการนี้ หรือไม่มีสิทธิ์ลบ')
+
+    if (kind === 'summary') summaries.value = summaries.value.filter((x) => x.summary_id !== id)
+    else if (kind === 'quiz') quizzes.value = quizzes.value.filter((x) => x.quiz_id !== id)
+    else flashcardSets.value = flashcardSets.value.filter((x) => x.flashcard_set_id !== id)
+  } catch (err) {
+    deleteContentError.value = `ลบ${cfg.label}ไม่สำเร็จ: ` + (err.message || 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ')
+  } finally {
+    deletingContentKey.value = ''
+  }
+}
+
 // --- ลบเอกสาร ---
 const deletingDocumentId = ref(null)
 const deleteError = ref('')
@@ -575,6 +633,7 @@ async function handleGenerateFlashcard() {
             </div>
 
             <h3 class="sub-title">สรุปที่มีอยู่แล้ว</h3>
+            <p v-if="deleteContentError" class="error-text">{{ deleteContentError }}</p>
             <p v-if="isLoadingSummaries" class="status-text">กำลังโหลด...</p>
             <p v-else-if="summaries.length === 0" class="status-text">ยังไม่มีสรุปในวิชานี้</p>
 
@@ -592,6 +651,16 @@ async function handleGenerateFlashcard() {
                   </div>
                   <p class="summary-meta">{{ formatDate(s.created_at) }}</p>
                 </RouterLink>
+                <div class="card-footer">
+                  <button
+                    type="button"
+                    class="delete-content-btn"
+                    :disabled="deletingContentKey === 'summary:' + s.summary_id"
+                    @click="handleDeleteContent('summary', s.summary_id, summaryTitle(s.content))"
+                  >
+                    {{ deletingContentKey === 'summary:' + s.summary_id ? '...' : 'ลบ' }}
+                  </button>
+                </div>
               </li>
             </ul>
           </template>
@@ -624,6 +693,7 @@ async function handleGenerateFlashcard() {
             </div>
 
             <h3 class="sub-title">Quiz ที่มีอยู่แล้ว</h3>
+            <p v-if="deleteContentError" class="error-text">{{ deleteContentError }}</p>
             <p v-if="isLoadingQuizzes" class="status-text">กำลังโหลด...</p>
             <p v-else-if="quizzes.length === 0" class="status-text">ยังไม่มี Quiz ในวิชานี้</p>
 
@@ -648,6 +718,14 @@ async function handleGenerateFlashcard() {
                   <RouterLink :to="{ name: 'quiz-detail', params: { quizId: q.quiz_id } }" class="review-link">
                     ตรวจสอบ/แก้ไข
                   </RouterLink>
+                  <button
+                    type="button"
+                    class="delete-content-btn"
+                    :disabled="deletingContentKey === 'quiz:' + q.quiz_id"
+                    @click="handleDeleteContent('quiz', q.quiz_id, q.title)"
+                  >
+                    {{ deletingContentKey === 'quiz:' + q.quiz_id ? '...' : 'ลบ' }}
+                  </button>
                 </div>
               </li>
             </ul>
@@ -681,6 +759,7 @@ async function handleGenerateFlashcard() {
             </div>
 
             <h3 class="sub-title">Flashcard ที่มีอยู่แล้ว</h3>
+            <p v-if="deleteContentError" class="error-text">{{ deleteContentError }}</p>
             <p v-if="isLoadingFlashcardSets" class="status-text">กำลังโหลด...</p>
             <p v-else-if="flashcardSets.length === 0" class="status-text">ยังไม่มี Flashcard ในวิชานี้</p>
 
@@ -701,6 +780,16 @@ async function handleGenerateFlashcard() {
                   </div>
                   <p class="summary-meta">{{ f.card_count }} ใบ · {{ formatDate(f.created_at) }}</p>
                 </RouterLink>
+                <div class="card-footer">
+                  <button
+                    type="button"
+                    class="delete-content-btn"
+                    :disabled="deletingContentKey === 'flashcard_set:' + f.flashcard_set_id"
+                    @click="handleDeleteContent('flashcard_set', f.flashcard_set_id, f.title)"
+                  >
+                    {{ deletingContentKey === 'flashcard_set:' + f.flashcard_set_id ? '...' : 'ลบ' }}
+                  </button>
+                </div>
               </li>
             </ul>
           </template>
@@ -1141,5 +1230,31 @@ async function handleGenerateFlashcard() {
 
 .review-link:hover {
   border-color: var(--ink-faint);
+}
+
+.card-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 1rem 0.8rem;
+}
+
+.delete-content-btn {
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid var(--border-strong);
+  color: var(--danger);
+  border-radius: 8px;
+  padding: 0.45rem 0.8rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.delete-content-btn:hover:not(:disabled) {
+  background: var(--danger-bg);
+}
+
+.delete-content-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>
