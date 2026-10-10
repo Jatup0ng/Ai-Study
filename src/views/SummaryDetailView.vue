@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { supabase } from '../supabaseClient'
 import ShareButton from '../component/ShareButton.vue'
+import MarkdownContent from '../component/MarkdownContent.vue'
 
 const props = defineProps({
   summaryId: { type: String, required: true }
@@ -272,7 +273,7 @@ onMounted(fetchSummary)
           </div>
         </template>
 
-        <div v-else class="summary-content">{{ summary.content }}</div>
+        <MarkdownContent v-else class="summary-content" :source="summary.content" />
       </div>
 
       <!-- ฝั่งขวา: Studio Panel (Chat / Quiz / Flashcard) -->
@@ -324,7 +325,8 @@ onMounted(fetchSummary)
               class="chat-bubble"
               :class="msg.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-model'"
             >
-              <div class="chat-bubble-text">{{ msg.text }}</div>
+              <MarkdownContent v-if="msg.role === 'model'" class="chat-bubble-text" :source="msg.text" breaks />
+              <div v-else class="chat-bubble-text">{{ msg.text }}</div>
               <button
                 v-if="msg.role === 'model'"
                 class="copy-btn"
@@ -509,7 +511,6 @@ onMounted(fetchSummary)
   border-radius: 12px;
   font-size: 0.95rem;
   line-height: 1.85;
-  white-space: pre-wrap;
 }
 
 .edit-textarea {
@@ -682,10 +683,10 @@ onMounted(fetchSummary)
   border-radius: 10px;
   font-size: 0.85rem;
   line-height: 1.6;
-  white-space: pre-wrap;
 }
 
 .chat-bubble-user {
+  white-space: pre-wrap;
   align-self: flex-end;
   background: var(--indigo);
   color: #ffffff;

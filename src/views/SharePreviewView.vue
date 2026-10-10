@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../composables/useAuth'
+import MarkdownContent from '../component/MarkdownContent.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -126,9 +127,7 @@ onMounted(async () => {
       <span class="badge">{{ typeLabel }} · ดูตัวอย่าง</span>
 
       <!-- Summary: เต็มรูปแบบ -->
-      <div v-if="preview.type === 'summary'" class="summary-content">
-        {{ preview.content }}
-      </div>
+      <MarkdownContent v-if="preview.type === 'summary'" class="summary-content" :source="preview.content" />
 
       <!-- Quiz: 3 ข้อแรก เฉพาะคำถาม -->
       <div v-else-if="preview.type === 'quiz'">
@@ -268,7 +267,6 @@ onMounted(async () => {
 }
 
 .summary-content {
-  white-space: pre-wrap;
   line-height: 1.75;
   font-size: 0.95rem;
 }

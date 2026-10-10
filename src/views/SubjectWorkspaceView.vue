@@ -199,9 +199,21 @@ function formatDate(isoString) {
   return new Date(isoString).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-function snippet(content, length = 110) {
-  if (!content) return ''
-  return content.length > length ? content.slice(0, length).trim() + '…' : content
+// Summary ไม่มีคอลัมน์ title — ดึงชื่อหัวข้อจากบรรทัดแรกของเนื้อหา แล้วลบสัญลักษณ์ Markdown ออก
+// (รองรับทั้งสรุปเก่าที่ขึ้นต้นด้วย **ตัวหนา** / bullet และสรุปใหม่ที่ขึ้นต้นด้วย # หัวข้อ)
+function summaryTitle(content, maxLength = 70) {
+  if (!content) return 'สรุปเนื้อหา'
+  const lines = content.split('\n').map((l) => l.trim()).filter((l) => l && !/^[-*_]{3,}$/.test(l))
+  const heading = lines.find((l) => /^#{1,3}\s/.test(l))
+  let title = (heading || lines[0] || '')
+    .replace(/^#{1,6}\s*/, '')
+    .replace(/^[-*+>]\s+/, '')
+    .replace(/\$([^$]*)\$/g, '$1')
+    .replace(/[*_`]/g, '')
+    .replace(/^ชีทสรุป(สอบ)?\s*[:：]\s*/, '')
+    .trim()
+  if (!title) return 'สรุปเนื้อหา'
+  return title.length > maxLength ? title.slice(0, maxLength).trim() + '…' : title
 }
 
 onMounted(async () => {
@@ -570,11 +582,15 @@ async function handleGenerateFlashcard() {
               <li v-for="s in summaries" :key="s.summary_id" class="summary-card">
                 <RouterLink :to="{ name: 'summary-detail', params: { summaryId: s.summary_id } }" class="summary-link">
                   <span class="ai-badge">AI สรุปให้</span>
-                  <p class="summary-snippet">{{ snippet(s.content) }}</p>
-                  <p class="summary-meta">
-                    <template v-if="s.file_names.length">จาก {{ s.file_names.length }} ไฟล์ · </template>
-                    {{ formatDate(s.created_at) }}
-                  </p>
+                  <p class="card-title">{{ summaryTitle(s.content) }}</p>
+                  <div class="source-files" :title="s.file_names.join(', ')">
+                    <template v-if="s.file_names.length">
+                      <span v-for="n in s.file_names.slice(0, 2)" :key="n" class="file-chip">📄 {{ n }}</span>
+                      <span v-if="s.file_names.length > 2" class="file-chip file-chip-more">+{{ s.file_names.length - 2 }} ไฟล์</span>
+                    </template>
+                    <span v-else class="file-chip file-chip-missing">ไฟล์ต้นทางถูกลบแล้ว</span>
+                  </div>
+                  <p class="summary-meta">{{ formatDate(s.created_at) }}</p>
                 </RouterLink>
               </li>
             </ul>
@@ -615,12 +631,15 @@ async function handleGenerateFlashcard() {
               <li v-for="q in quizzes" :key="q.quiz_id" class="summary-card quiz-card">
                 <div class="summary-link">
                   <span class="ai-badge quiz-badge">AI ออกข้อสอบให้</span>
-                  <p class="summary-snippet">{{ q.title }}</p>
-                  <p class="summary-meta">
-                    {{ q.question_count }} ข้อ
-                    <template v-if="q.file_names.length"> · จาก {{ q.file_names.length }} ไฟล์</template>
-                    · {{ formatDate(q.created_at) }}
-                  </p>
+                  <p class="card-title">{{ q.title }}</p>
+                  <div class="source-files" :title="q.file_names.join(', ')">
+                    <template v-if="q.file_names.length">
+                      <span v-for="n in q.file_names.slice(0, 2)" :key="n" class="file-chip">📄 {{ n }}</span>
+                      <span v-if="q.file_names.length > 2" class="file-chip file-chip-more">+{{ q.file_names.length - 2 }} ไฟล์</span>
+                    </template>
+                    <span v-else class="file-chip file-chip-missing">ไฟล์ต้นทางถูกลบแล้ว</span>
+                  </div>
+                  <p class="summary-meta">{{ q.question_count }} ข้อ · {{ formatDate(q.created_at) }}</p>
                 </div>
                 <div class="quiz-actions">
                   <RouterLink :to="{ name: 'quiz-practice', params: { quizId: q.quiz_id } }" class="practice-link">
@@ -672,12 +691,15 @@ async function handleGenerateFlashcard() {
                   class="summary-link"
                 >
                   <span class="ai-badge flashcard-badge">AI ทำ Flashcard ให้</span>
-                  <p class="summary-snippet">{{ f.title }}</p>
-                  <p class="summary-meta">
-                    {{ f.card_count }} ใบ
-                    <template v-if="f.file_names.length"> · จาก {{ f.file_names.length }} ไฟล์</template>
-                    · {{ formatDate(f.created_at) }}
-                  </p>
+                  <p class="card-title">{{ f.title }}</p>
+                  <div class="source-files" :title="f.file_names.join(', ')">
+                    <template v-if="f.file_names.length">
+                      <span v-for="n in f.file_names.slice(0, 2)" :key="n" class="file-chip">📄 {{ n }}</span>
+                      <span v-if="f.file_names.length > 2" class="file-chip file-chip-more">+{{ f.file_names.length - 2 }} ไฟล์</span>
+                    </template>
+                    <span v-else class="file-chip file-chip-missing">ไฟล์ต้นทางถูกลบแล้ว</span>
+                  </div>
+                  <p class="summary-meta">{{ f.card_count }} ใบ · {{ formatDate(f.created_at) }}</p>
                 </RouterLink>
               </li>
             </ul>
@@ -1033,6 +1055,50 @@ async function handleGenerateFlashcard() {
   line-height: 1.6;
   margin: 0 0 0.4rem;
   color: var(--ink);
+}
+
+.card-title {
+  font-family: var(--font-heading);
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.45;
+  margin: 0 0 0.5rem;
+  color: var(--ink);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.source-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0 0 0.5rem;
+}
+
+.file-chip {
+  max-width: 100%;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.1rem 0.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-chip-more {
+  color: var(--indigo);
+  font-weight: 600;
+}
+
+.file-chip-missing {
+  font-style: italic;
+  color: var(--ink-faint);
 }
 
 .summary-meta {
