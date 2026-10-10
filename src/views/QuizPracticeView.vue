@@ -164,6 +164,46 @@ function choiceStateClass(question, choice) {
   return ''
 }
 
+// --- ทีละข้อ + ตารางเลขข้อ ---
+const currentIndex = ref(0)
+const currentQuestion = computed(() => questions.value[currentIndex.value] || null)
+const isLast = computed(() => currentIndex.value >= questions.value.length - 1)
+const choiceLabels = ['A', 'B', 'C', 'D', 'E', 'F']
+
+function goTo(i) {
+  if (i < 0 || i >= questions.value.length) return
+  currentIndex.value = i
+}
+
+function isAnswered(q) {
+  return selectedAnswers.value[q.question_id] !== undefined
+}
+
+function isQuestionCorrect(q) {
+  const picked = q.choices.find((c) => c.choice_id === selectedAnswers.value[q.question_id])
+  return !!picked?.is_correct
+}
+
+// สถานะของเลขข้อในตาราง: ก่อนส่ง = ตอบแล้ว/ยังไม่ตอบ, หลังส่ง = ถูก/ผิด
+function navClass(q, i) {
+  const classes = []
+  if (i === currentIndex.value) classes.push('is-current')
+  if (result.value) classes.push(isQuestionCorrect(q) ? 'is-correct' : 'is-wrong')
+  else if (isAnswered(q)) classes.push('is-answered')
+  return classes
+}
+
+const percent = computed(() =>
+  result.value && result.value.total ? Math.round((result.value.score / result.value.total) * 100) : 0
+)
+
+function retry() {
+  selectedAnswers.value = {}
+  result.value = null
+  submitError.value = ''
+  currentIndex.value = 0
+}
+
 onMounted(fetchQuiz)
 </script>
 
@@ -177,51 +217,135 @@ onMounted(fetchQuiz)
       ← กลับไปหน้าวิชา
     </RouterLink>
 
-    <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
+    <p v-if="errorMessage" class="error-text" role="alert">{{ errorMessage }}</p>
     <p v-if="isLoading" class="status-text">กำลังโหลด...</p>
 
     <template v-else-if="quiz">
       <header class="page-header">
         <h1>{{ quiz.title }}</h1>
-        <p class="progress-label" v-if="!result">
-          ตอบแล้ว {{ answeredCount }}/{{ questions.length }} ข้อ
-        </p>
+        <div class="progress-row">
+          <span>ข้อ {{ currentIndex + 1 }} จาก {{ questions.length }}</span>
+          <span v-if="!result">ตอบแล้ว {{ answeredCount }}/{{ questions.length }} ข้อ</span>
+          <span v-else>ได้ {{ result.score }}/{{ result.total }} คะแนน</span>
+        </div>
+        <div class="progress-track" aria-hidden="true">
+          <div
+            class="progress-fill"
+            :style="{ width: (questions.length ? ((currentIndex + 1) / questions.length) * 100 : 0) + '%' }"
+          ></div>
+        </div>
       </header>
 
-      <div v-if="result" class="result-banner">
-        <p class="result-score">ได้ {{ result.score }} / {{ result.total }} คะแนน</p>
-        <p class="result-hint">เฉลยของแต่ละข้อแสดงอยู่ด้านล่างแล้ว — สีเขียวคือคำตอบที่ถูก</p>
-      </div>
+      <p v-if="questions.length === 0" class="status-text">Quiz นี้ยังไม่มีคำถาม</p>
 
-      <ol class="question-list">
-        <li v-for="(q, idx) in questions" :key="q.question_id" class="question-block">
-          <p class="question-text">{{ idx + 1 }}. <MarkdownContent inline :source="q.question_text" /></p>
+      <div v-else class="layout">
+        <section v-if="currentQuestion" class="question-card">
+          <span class="chip">ข้อ {{ currentIndex + 1 }}</span>
+          <div class="question-text"><MarkdownContent inline :source="currentQuestion.question_text" /></div>
 
           <ul class="choice-list">
-            <li v-for="c in q.choices" :key="c.choice_id">
+            <li v-for="(c, ci) in currentQuestion.choices" :key="c.choice_id">
               <button
                 type="button"
                 class="choice-btn"
-                :class="choiceStateClass(q, c)"
+                :class="choiceStateClass(currentQuestion, c)"
                 :disabled="!!result"
-                @click="selectAnswer(q.question_id, c.choice_id)"
+                :aria-pressed="isSelected(currentQuestion.question_id, c.choice_id)"
+                @click="selectAnswer(currentQuestion.question_id, c.choice_id)"
               >
-                <span class="choice-radio" :class="{ checked: isSelected(q.question_id, c.choice_id) }"></span>
-                <MarkdownContent inline :source="c.choice_text" />
-                <span v-if="result && c.is_correct" class="correct-badge">✓ คำตอบที่ถูก</span>
+                <span class="choice-letter">{{ choiceLabels[ci] }}</span>
+                <span class="choice-body"><MarkdownContent inline :source="c.choice_text" /></span>
+                <span v-if="result && c.is_correct" class="choice-tag">✓ คำตอบที่ถูก</span>
+                <span
+                  v-else-if="result && isSelected(currentQuestion.question_id, c.choice_id)"
+                  class="choice-tag"
+                >
+                  คำตอบของคุณ
+                </span>
               </button>
             </li>
           </ul>
 
-          <p v-if="result && q.explanation" class="explanation-text"><MarkdownContent inline :source="q.explanation" /></p>
-        </li>
-      </ol>
+          <div v-if="result && currentQuestion.explanation" class="explanation">
+            <b>เฉลย</b>
+            <div><MarkdownContent inline :source="currentQuestion.explanation" /></div>
+          </div>
 
-      <div class="submit-bar" v-if="!result">
-        <p v-if="submitError" class="error-text">{{ submitError }}</p>
-        <button class="submit-btn" :disabled="isSubmitting" @click="handleSubmit">
-          {{ isSubmitting ? 'กำลังส่งคำตอบ...' : 'ส่งคำตอบ' }}
-        </button>
+          <p v-if="submitError" class="error-text" role="alert">{{ submitError }}</p>
+
+          <div class="step-row">
+            <button type="button" class="ghost-btn" :disabled="currentIndex === 0" @click="goTo(currentIndex - 1)">
+              ← ข้อก่อนหน้า
+            </button>
+            <button
+              v-if="!isLast"
+              type="button"
+              class="primary-btn"
+              @click="goTo(currentIndex + 1)"
+            >
+              ข้อถัดไป →
+            </button>
+            <button
+              v-else-if="!result"
+              type="button"
+              class="primary-btn"
+              :disabled="isSubmitting"
+              @click="handleSubmit"
+            >
+              {{ isSubmitting ? 'กำลังส่งคำตอบ...' : 'ส่งคำตอบ' }}
+            </button>
+          </div>
+        </section>
+
+        <aside class="side">
+          <div v-if="result" class="side-card result-card">
+            <div class="side-title">ผลคะแนน</div>
+            <div class="score">{{ result.score }}<span>/{{ result.total }}</span></div>
+            <div class="score-sub">{{ percent }}% · เลือกเลขข้อเพื่อดูเฉลยแต่ละข้อ</div>
+            <div class="result-actions">
+              <button type="button" class="primary-btn" @click="retry">ทำใหม่อีกครั้ง</button>
+              <RouterLink :to="{ name: 'quiz-detail', params: { quizId } }" class="ghost-link">
+                ตรวจสอบ/แก้ไข Quiz
+              </RouterLink>
+            </div>
+          </div>
+
+          <div class="side-card">
+            <div class="side-title">ข้อทั้งหมด</div>
+            <div class="nav-grid">
+              <button
+                v-for="(q, i) in questions"
+                :key="q.question_id"
+                type="button"
+                class="nav-cell"
+                :class="navClass(q, i)"
+                :aria-label="'ไปข้อ ' + (i + 1)"
+                @click="goTo(i)"
+              >
+                {{ i + 1 }}
+              </button>
+            </div>
+            <ul v-if="!result" class="legend">
+              <li><span class="dot dot-answered"></span>ตอบแล้ว</li>
+              <li><span class="dot"></span>ยังไม่ตอบ</li>
+            </ul>
+            <ul v-else class="legend">
+              <li><span class="dot dot-correct"></span>ถูก</li>
+              <li><span class="dot dot-wrong"></span>ผิด</li>
+            </ul>
+          </div>
+
+          <div v-if="!result" class="side-card">
+            <div class="side-title">พร้อมส่งหรือยัง</div>
+            <p class="side-text">
+              ตอบแล้ว {{ answeredCount }} จาก {{ questions.length }} ข้อ — ต้องตอบให้ครบทุกข้อก่อนส่ง
+              เฉลยจะแสดงหลังส่งคำตอบ
+            </p>
+            <button type="button" class="primary-btn block" :disabled="isSubmitting" @click="handleSubmit">
+              {{ isSubmitting ? 'กำลังส่งคำตอบ...' : 'ส่งคำตอบ' }}
+            </button>
+          </div>
+        </aside>
       </div>
     </template>
   </div>
@@ -229,193 +353,403 @@ onMounted(fetchQuiz)
 
 <style scoped>
 .page {
-  max-width: 720px;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 2rem 1.5rem;
+  padding: 1.75rem 2.5rem 4rem;
 }
 
 .back-link {
   display: inline-block;
-  color: var(--ink-faint);
+  color: var(--text-muted);
   font-size: 0.85rem;
   text-decoration: none;
-  margin-bottom: 1.25rem;
+  margin-bottom: 1.1rem;
 }
 
 .back-link:hover {
-  text-decoration: underline;
+  color: var(--primary);
 }
 
 .page-header {
-  margin-bottom: 1.25rem;
+  margin-bottom: 1.5rem;
 }
 
 .page-header h1 {
-  font-size: 1.35rem;
-  margin: 0 0 0.3rem;
+  font-size: 1.7rem;
+  margin: 0 0 1rem;
 }
 
-.progress-label {
+.progress-row {
+  display: flex;
+  justify-content: space-between;
   font-size: 0.85rem;
-  color: var(--ink-faint);
-  margin: 0;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.progress-track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border);
+}
+
+.progress-fill {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--primary);
+  transition: width 0.2s ease;
 }
 
 .status-text {
-  color: var(--ink-soft);
+  color: var(--text-muted);
   font-size: 0.9rem;
 }
 
 .error-text {
-  color: #d64545;
-  font-size: 0.85rem;
-  margin-bottom: 1rem;
-}
-
-.result-banner {
-  padding: 1rem 1.1rem;
+  color: var(--danger);
+  background: var(--danger-bg);
   border-radius: 10px;
-  background: #eef7ee;
-  border: 1px solid #bfe3bf;
-  margin-bottom: 1.5rem;
+  padding: 0.6rem 0.9rem;
+  font-size: 0.85rem;
 }
 
-.result-score {
-  font-size: 1.2rem;
-  font-weight: 700;
-  margin: 0 0 0.25rem;
-  color: #1e7b34;
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 1.5rem;
+  align-items: start;
 }
 
-.result-hint {
-  font-size: 0.82rem;
-  color: var(--ink-soft);
-  margin: 0;
+@media (max-width: 1000px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+  .page {
+    padding: 1.25rem 1rem 3rem;
+  }
 }
 
-.question-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
+.question-card,
+.side-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--shadow-card);
+}
+
+.question-card {
+  padding: 2rem 2.25rem;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1.1rem;
 }
 
-.question-block {
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 1.25rem;
+.chip {
+  align-self: flex-start;
+  padding: 0.2rem 0.8rem;
+  border-radius: 99px;
+  background: var(--hover);
+  color: var(--primary);
+  font-size: 0.82rem;
+  font-weight: 600;
 }
 
 .question-text {
-  font-size: 0.98rem;
-  font-weight: 600;
-  margin: 0 0 0.75rem;
+  font-family: var(--font-serif);
+  font-size: 1.4rem;
+  line-height: 1.6;
 }
 
 .choice-list {
   list-style: none;
-  padding: 0;
   margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.7rem;
 }
 
 .choice-btn {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.9rem;
+  padding: 0.95rem 1.1rem;
+  border-radius: 14px;
+  border: 2px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 1rem;
   text-align: left;
-  padding: 0.65rem 0.9rem;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--card);
-  font-size: 0.9rem;
   cursor: pointer;
-  color: var(--ink);
+  transition: border-color 0.12s ease, background 0.12s ease;
 }
 
 .choice-btn:hover:not(:disabled) {
-  border-color: var(--border-strong);
+  border-color: var(--primary);
+  background: var(--hover);
 }
 
 .choice-btn:disabled {
   cursor: default;
 }
 
-.choice-radio {
-  flex-shrink: 0;
-  width: 1rem;
-  height: 1rem;
+.choice-letter {
+  flex: none;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  border: 2px solid var(--border-strong);
-  box-sizing: border-box;
+  border: 1px solid currentColor;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-muted);
 }
 
-.choice-radio.checked {
-  border-color: var(--indigo);
-  background: var(--indigo);
-  box-shadow: inset 0 0 0 3px #ffffff;
+.choice-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.choice-tag {
+  flex: none;
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
 .choice-selected {
-  border-color: var(--indigo);
-  background: #eef0ff;
+  border-color: var(--primary);
+  background: var(--hover);
+}
+
+.choice-selected .choice-letter {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
 }
 
 .choice-correct {
-  border-color: #7fc98f;
-  background: #eef7ee;
+  border-color: var(--success);
+  background: var(--success-bg);
+}
+
+.choice-correct .choice-letter,
+.choice-correct .choice-tag {
+  color: var(--success);
 }
 
 .choice-wrong {
-  border-color: #e2a1a1;
-  background: #fbeaea;
+  border-color: var(--danger);
+  background: var(--danger-bg);
 }
 
-.correct-badge {
-  margin-left: auto;
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: #1e7b34;
-  white-space: nowrap;
+.choice-wrong .choice-letter,
+.choice-wrong .choice-tag {
+  color: var(--danger);
 }
 
-.explanation-text {
-  margin: 0.7rem 0 0;
-  padding: 0.65rem 0.8rem;
-  background: var(--highlighter-soft);
-  border: 1px solid var(--highlighter);
-  border-radius: 8px;
-  font-size: 0.85rem;
-  color: var(--ink-soft);
-  line-height: 1.6;
-}
-
-.submit-bar {
-  margin-top: 1.5rem;
-}
-
-.submit-btn {
-  width: 100%;
-  padding: 0.75rem 1rem;
-  border-radius: 8px;
-  border: none;
-  background: var(--indigo);
-  color: #ffffff;
+.explanation {
+  background: var(--info-bg);
+  color: var(--info);
+  border-radius: 14px;
+  padding: 1rem 1.2rem;
   font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.step-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.4rem;
+}
+
+.primary-btn,
+.ghost-btn {
+  padding: 0.65rem 1.3rem;
+  border-radius: 10px;
+  font-size: 0.92rem;
   font-weight: 600;
   cursor: pointer;
 }
 
-.submit-btn:hover:not(:disabled) {
-  background: var(--indigo-dark);
+.primary-btn {
+  border: none;
+  background: var(--primary);
+  color: var(--on-primary);
 }
 
-.submit-btn:disabled {
+.primary-btn:hover:not(:disabled) {
+  background: var(--primary-strong);
+}
+
+.primary-btn.block {
+  width: 100%;
+}
+
+.ghost-btn {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.ghost-btn:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.primary-btn:disabled,
+.ghost-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* --- แผงขวา --- */
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  position: sticky;
+  top: 1.25rem;
+}
+
+@media (max-width: 1000px) {
+  .side {
+    position: static;
+  }
+}
+
+.side-card {
+  padding: 1.2rem 1.3rem;
+}
+
+.side-title {
+  font-size: 1.02rem;
+  font-weight: 600;
+  margin-bottom: 0.8rem;
+}
+
+.side-text {
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+  margin: 0 0 0.9rem;
+}
+
+.nav-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.5rem;
+}
+
+.nav-cell {
+  height: 42px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.nav-cell.is-answered {
+  background: var(--hover);
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.nav-cell.is-correct {
+  background: var(--success-bg);
+  color: var(--success);
+  border-color: var(--success);
+}
+
+.nav-cell.is-wrong {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.nav-cell.is-current {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.legend {
+  list-style: none;
+  margin: 0.9rem 0 0;
+  padding: 0;
+  display: flex;
+  gap: 1rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+}
+
+.dot-answered {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.dot-correct {
+  background: var(--success);
+  border-color: var(--success);
+}
+
+.dot-wrong {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.score {
+  font-family: var(--font-heading);
+  font-size: 2.4rem;
+  font-weight: 700;
+  color: var(--primary);
+  line-height: 1.1;
+}
+
+.score span {
+  font-size: 1.1rem;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.score-sub {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: 0.4rem 0 1rem;
+}
+
+.result-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.ghost-link {
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--primary);
+  text-decoration: none;
+  padding: 0.4rem;
+}
+
+.ghost-link:hover {
+  text-decoration: underline;
 }
 </style>

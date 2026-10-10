@@ -32,21 +32,21 @@ defineProps({
 }
 
 .variant-ai {
-  color: #8a6d1a;
+  color: var(--warning);
   background: var(--highlighter-soft);
   border-color: var(--highlighter);
 }
 
 .variant-quiz {
-  color: #1e5a9c;
-  background: #e8f1fb;
-  border-color: #b9d7f2;
+  color: var(--info);
+  background: var(--info-bg);
+  border-color: color-mix(in srgb, var(--info) 35%, var(--border));
 }
 
 .variant-flashcard {
-  color: #7a3e9d;
-  background: #f3e8fb;
-  border-color: #ddb9f2;
+  color: color-mix(in srgb, var(--secondary) 70%, var(--text));
+  background: color-mix(in srgb, var(--secondary) 14%, transparent);
+  border-color: color-mix(in srgb, var(--secondary) 35%, var(--border));
 }
 
 .variant-success {
@@ -56,9 +56,9 @@ defineProps({
 }
 
 .variant-warning {
-  color: #8a5a00;
-  background: #fdf0d5;
-  border-color: #fdf0d5;
+  color: var(--warning);
+  background: var(--warning-bg);
+  border-color: var(--warning-bg);
 }
 
 .variant-danger {

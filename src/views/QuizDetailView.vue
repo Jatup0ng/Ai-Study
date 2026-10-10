@@ -30,6 +30,9 @@ const saveQuestionError = ref('')
 
 const deletingQuestionId = ref(null)
 
+// ข้อที่เลือกดู/แก้ไขอยู่ (แสดงตรงกลาง)
+const selectedId = ref(null)
+
 async function fetchQuiz() {
   isLoading.value = true
   errorMessage.value = ''
@@ -69,6 +72,7 @@ async function fetchQuiz() {
     choices: [...(q.choices || [])].sort((a, b) => a.choice_id - b.choice_id)
   }))
 
+  selectedId.value = questions.value[0]?.question_id ?? null
   isLoading.value = false
 }
 
@@ -185,7 +189,11 @@ async function handleDeleteQuestion(q) {
   if (error) {
     errorMessage.value = 'ลบคำถามไม่สำเร็จ: ' + error.message
   } else {
+    const idx = questions.value.findIndex((item) => item.question_id === q.question_id)
     questions.value = questions.value.filter((item) => item.question_id !== q.question_id)
+    if (selectedId.value === q.question_id) {
+      selectedId.value = (questions.value[idx] || questions.value[idx - 1])?.question_id ?? null
+    }
   }
   deletingQuestionId.value = null
 }
@@ -206,6 +214,20 @@ const backLink = computed(() => {
 
 const choiceLabels = ['A', 'B', 'C', 'D', 'E', 'F']
 
+const selectedIndex = computed(() => questions.value.findIndex((q) => q.question_id === selectedId.value))
+const selectedQuestion = computed(() => questions.value[selectedIndex.value] || null)
+
+function selectQuestion(id) {
+  if (editingQuestionId.value) return // กำลังแก้ไขอยู่ ต้องบันทึกหรือยกเลิกก่อน
+  selectedId.value = id
+}
+
+// ข้อความย่อสำหรับรายการข้อทางซ้าย (ตัดสัญลักษณ์ Markdown/สูตรคร่าว ๆ)
+function shortText(text) {
+  const plain = (text || '').replace(/[*_`#>$]/g, '').replace(/\s+/g, ' ').trim()
+  return plain.length > 60 ? plain.slice(0, 60) + '…' : plain
+}
+
 onMounted(fetchQuiz)
 </script>
 
@@ -213,16 +235,14 @@ onMounted(fetchQuiz)
   <div class="page">
     <RouterLink :to="backLink" class="back-link">← กลับไปหน้าวิชา</RouterLink>
 
-    <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
+    <p v-if="errorMessage" class="error-text" role="alert">{{ errorMessage }}</p>
     <p v-if="isLoading" class="status-text">กำลังโหลด...</p>
 
     <template v-else-if="quiz">
       <header class="page-header">
         <div class="header-main">
-          <span class="ai-badge">AI ออกข้อสอบให้</span>
-
           <template v-if="isEditingTitle">
-            <input v-model="editedTitle" type="text" class="title-input" />
+            <input v-model="editedTitle" type="text" class="title-input" aria-label="ชื่อ Quiz" />
             <div class="title-actions">
               <button class="save-btn" :disabled="isSavingTitle || !editedTitle.trim()" @click="saveTitle">
                 {{ isSavingTitle ? 'กำลังบันทึก...' : 'บันทึก' }}
@@ -231,51 +251,76 @@ onMounted(fetchQuiz)
             </div>
           </template>
           <template v-else>
-            <h1 @click="startEditTitle" title="คลิกเพื่อแก้ไขชื่อ">{{ quiz.title }}</h1>
+            <h1 title="คลิกเพื่อแก้ไขชื่อ" @click="startEditTitle">{{ quiz.title }}</h1>
           </template>
 
-          <p v-if="sourceFileNames.length" class="source-label">
-            สร้างจาก {{ sourceFileNames.length }} ไฟล์: {{ sourceFileNames.join(', ') }}
-          </p>
-          <p class="timestamp-label">
-            {{ questions.length }} ข้อ · สร้างเมื่อ {{ formatDateTime(quiz.created_at) }}
-          </p>
+          <div class="chips">
+            <span class="chip chip-primary">{{ questions.length }} ข้อ</span>
+            <span class="chip">AI ออกข้อสอบให้</span>
+            <span class="chip">สร้างเมื่อ {{ formatDateTime(quiz.created_at) }}</span>
+          </div>
         </div>
 
         <div class="header-actions">
           <ShareButton content-type="quiz" :content-id="quizId" />
+          <RouterLink
+            :to="{ name: 'quiz-practice', params: { quizId } }"
+            class="practice-btn"
+          >
+            ทำ Quiz นี้
+          </RouterLink>
         </div>
       </header>
 
-      <p class="review-hint">
-        ตรวจสอบความถูกต้องของคำถาม/เฉลยก่อนนำไปใช้จริงหรือแชร์ให้เพื่อน — คลิก "แก้ไข" ที่ข้อที่ต้องการปรับได้เลย
-      </p>
+      <p v-if="questions.length === 0" class="status-text">Quiz นี้ไม่มีคำถามเหลืออยู่แล้ว</p>
 
-      <ul class="question-list">
-        <li v-for="(q, i) in questions" :key="q.question_id" class="question-card">
-          <template v-if="editingQuestionId === q.question_id">
-            <p class="question-number">ข้อที่ {{ i + 1 }}</p>
-            <textarea v-model="draftQuestionText" class="edit-textarea" rows="2"></textarea>
+      <div v-else class="layout">
+        <!-- ซ้าย: รายการข้อ -->
+        <nav class="list-card" aria-label="รายการข้อสอบ">
+          <div class="list-head">{{ questions.length }} ข้อ</div>
+          <ul class="q-list">
+            <li v-for="(q, i) in questions" :key="q.question_id">
+              <button
+                type="button"
+                class="q-item"
+                :class="{ 'is-active': q.question_id === selectedId }"
+                :disabled="!!editingQuestionId && q.question_id !== selectedId"
+                @click="selectQuestion(q.question_id)"
+              >
+                <span class="q-num">{{ i + 1 }}</span>
+                <span class="q-short">{{ shortText(q.question_text) }}</span>
+              </button>
+            </li>
+          </ul>
+        </nav>
 
+        <!-- กลาง: ดู/แก้ไขข้อที่เลือก -->
+        <section v-if="selectedQuestion" class="editor-card">
+          <template v-if="editingQuestionId === selectedQuestion.question_id">
+            <div class="editor-head"><b>แก้ไขข้อที่ {{ selectedIndex + 1 }}</b></div>
+
+            <label class="field-label" for="q-text">โจทย์</label>
+            <textarea id="q-text" v-model="draftQuestionText" class="edit-textarea" rows="3"></textarea>
+
+            <div class="field-label">ตัวเลือก (เลือกวงกลมที่เป็นคำตอบที่ถูก)</div>
             <div class="choice-edit-list">
               <div v-for="(c, ci) in draftChoices" :key="c.choice_id" class="choice-edit-row">
                 <input
                   type="radio"
-                  :name="'correct-' + q.question_id"
+                  :name="'correct-' + selectedQuestion.question_id"
                   :checked="c.is_correct"
+                  :aria-label="'ตัวเลือก ' + choiceLabels[ci] + ' เป็นคำตอบที่ถูก'"
                   @change="setCorrectChoice(c.choice_id)"
                 />
                 <span class="choice-label">{{ choiceLabels[ci] }}</span>
-                <input v-model="c.choice_text" type="text" class="choice-input" />
+                <input v-model="c.choice_text" type="text" class="choice-input" :aria-label="'ตัวเลือก ' + choiceLabels[ci]" />
               </div>
             </div>
 
-            <label class="explanation-label">
-              คำอธิบายเฉลย
-              <textarea v-model="draftExplanation" class="edit-textarea" rows="2"></textarea>
-            </label>
+            <label class="field-label" for="q-exp">คำอธิบายเฉลย</label>
+            <textarea id="q-exp" v-model="draftExplanation" class="edit-textarea" rows="3"></textarea>
 
-            <p v-if="saveQuestionError" class="error-text">{{ saveQuestionError }}</p>
+            <p v-if="saveQuestionError" class="error-text" role="alert">{{ saveQuestionError }}</p>
 
             <div class="edit-actions">
               <button class="save-btn" :disabled="isSavingQuestion" @click="saveQuestion">
@@ -286,183 +331,293 @@ onMounted(fetchQuiz)
           </template>
 
           <template v-else>
-            <div class="question-header">
-              <p class="question-number">ข้อที่ {{ i + 1 }}</p>
+            <div class="editor-head">
+              <b>ข้อที่ {{ selectedIndex + 1 }}</b>
               <div class="question-actions">
-                <button class="edit-btn" @click="startEditQuestion(q)">แก้ไข</button>
+                <button class="edit-btn" @click="startEditQuestion(selectedQuestion)">แก้ไข</button>
                 <button
                   class="delete-btn"
-                  :disabled="deletingQuestionId === q.question_id"
-                  @click="handleDeleteQuestion(q)"
+                  :disabled="deletingQuestionId === selectedQuestion.question_id"
+                  @click="handleDeleteQuestion(selectedQuestion)"
                 >
-                  {{ deletingQuestionId === q.question_id ? '...' : 'ลบ' }}
+                  {{ deletingQuestionId === selectedQuestion.question_id ? '...' : 'ลบ' }}
                 </button>
               </div>
             </div>
 
-            <p class="question-text"><MarkdownContent inline :source="q.question_text" /></p>
+            <div class="question-text"><MarkdownContent inline :source="selectedQuestion.question_text" /></div>
 
             <ul class="choice-list">
               <li
-                v-for="(c, ci) in q.choices"
+                v-for="(c, ci) in selectedQuestion.choices"
                 :key="c.choice_id"
                 class="choice-item"
                 :class="{ 'is-correct': c.is_correct }"
               >
                 <span class="choice-label">{{ choiceLabels[ci] }}</span>
-                <span><MarkdownContent inline :source="c.choice_text" /></span>
+                <span class="choice-text"><MarkdownContent inline :source="c.choice_text" /></span>
                 <span v-if="c.is_correct" class="correct-tag">✓ คำตอบที่ถูก</span>
               </li>
             </ul>
 
-            <p v-if="q.explanation" class="explanation-text">💡 <MarkdownContent inline :source="q.explanation" /></p>
+            <div v-if="selectedQuestion.explanation" class="explanation">
+              <b>คำอธิบายเฉลย</b>
+              <div><MarkdownContent inline :source="selectedQuestion.explanation" /></div>
+            </div>
           </template>
-        </li>
-      </ul>
+        </section>
 
-      <p v-if="questions.length === 0" class="status-text">Quiz นี้ไม่มีคำถามเหลืออยู่แล้ว</p>
+        <!-- ขวา: ข้อมูลชุดข้อสอบ -->
+        <aside class="info-col">
+          <div class="info-card">
+            <div class="info-title">เกี่ยวกับชุดข้อสอบ</div>
+            <dl class="info-list">
+              <div><dt>จำนวนข้อ</dt><dd>{{ questions.length }}</dd></div>
+              <div><dt>สร้างเมื่อ</dt><dd>{{ formatDateTime(quiz.created_at) }}</dd></div>
+            </dl>
+            <div v-if="sourceFileNames.length" class="source-box">
+              <div class="source-title">สร้างจาก {{ sourceFileNames.length }} ไฟล์</div>
+              <ul>
+                <li v-for="n in sourceFileNames" :key="n">{{ n }}</li>
+              </ul>
+            </div>
+          </div>
+          <div class="info-card tip-card">
+            <div class="info-title">ก่อนนำไปใช้จริง</div>
+            <p>
+              ตรวจสอบความถูกต้องของคำถามและเฉลยก่อนทำหรือแชร์ให้เพื่อน เลือกข้อทางซ้ายแล้วกด “แก้ไข” เพื่อปรับได้เลย
+            </p>
+          </div>
+        </aside>
+      </div>
     </template>
   </div>
 </template>
 
 <style scoped>
 .page {
-  max-width: 760px;
+  max-width: 1280px;
   margin: 0 auto;
-  padding: 2rem 1.5rem 4rem;
+  padding: 1.75rem 2.5rem 4rem;
 }
 
 .back-link {
   display: inline-block;
-  color: var(--ink-soft);
+  color: var(--text-muted);
   font-size: 0.85rem;
   text-decoration: none;
-  margin-bottom: 1.25rem;
+  margin-bottom: 1.1rem;
 }
 
 .back-link:hover {
-  text-decoration: underline;
+  color: var(--primary);
 }
 
 .page-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 0.5rem;
+  gap: 1.25rem;
+  margin-bottom: 1.5rem;
 }
 
-.header-actions {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-  flex-shrink: 0;
+.header-main {
+  min-width: 0;
+  flex: 1;
 }
 
-.ai-badge {
-  display: inline-block;
-  font-size: 0.68rem;
-  font-weight: 700;
-  color: #8a6d1a;
-  background: var(--highlighter-soft);
-  border: 1px solid var(--highlighter);
-  padding: 0.1rem 0.45rem;
-  border-radius: 6px;
-  margin-bottom: 0.5rem;
-}
-
-.header-main h1 {
-  font-size: 1.5rem;
-  margin: 0 0 0.4rem;
-  cursor: pointer;
-}
-
-.header-main h1:hover {
-  text-decoration: underline;
-  text-decoration-style: dotted;
+.page-header h1 {
+  font-size: 1.8rem;
+  margin: 0 0 0.8rem;
+  cursor: text;
 }
 
 .title-input {
-  display: block;
   width: 100%;
+  max-width: 480px;
+  padding: 0.5rem 0.8rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
   font-size: 1.3rem;
-  font-family: var(--font-heading);
   font-weight: 700;
-  padding: 0.4rem 0.6rem;
-  border-radius: 8px;
-  border: 1px solid var(--border-strong);
-  margin-bottom: 0.5rem;
 }
 
 .title-actions {
   display: flex;
   gap: 0.5rem;
-  margin-bottom: 0.6rem;
+  margin: 0.6rem 0 0.8rem;
 }
 
-.source-label {
-  font-size: 0.85rem;
-  color: var(--ink-soft);
-  margin: 0 0 0.2rem;
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
-.timestamp-label {
-  font-size: 0.78rem;
-  color: var(--ink-faint);
-  margin: 0;
+.chip {
+  padding: 0.2rem 0.75rem;
+  border-radius: 99px;
+  background: var(--hover);
+  color: var(--text-muted);
+  font-size: 0.8rem;
 }
 
-.review-hint {
-  font-size: 0.82rem;
-  color: var(--ink-soft);
-  background: var(--paper);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.6rem 0.8rem;
-  margin: 1.25rem 0;
+.chip-primary {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.header-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  flex-shrink: 0;
+}
+
+.practice-btn {
+  padding: 0.55rem 1.2rem;
+  border-radius: 10px;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.practice-btn:hover {
+  background: var(--primary-strong);
 }
 
 .status-text {
-  color: var(--ink-soft);
+  color: var(--text-muted);
   font-size: 0.9rem;
 }
 
 .error-text {
   color: var(--danger);
+  background: var(--danger-bg);
+  border-radius: 10px;
+  padding: 0.6rem 0.9rem;
   font-size: 0.85rem;
-  margin-bottom: 1rem;
 }
 
-.question-list {
+.layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr) 280px;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+  .page {
+    padding: 1.25rem 1rem 3rem;
+  }
+}
+
+.list-card,
+.editor-card,
+.info-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: var(--shadow-card);
+}
+
+.list-card {
+  padding: 0.9rem;
+  position: sticky;
+  top: 1.25rem;
+  max-height: calc(100vh - 2.5rem);
+  overflow-y: auto;
+}
+
+@media (max-width: 1100px) {
+  .list-card {
+    position: static;
+    max-height: 280px;
+  }
+}
+
+.list-head {
+  font-weight: 600;
+  padding: 0.3rem 0.5rem 0.7rem;
+}
+
+.q-list {
   list-style: none;
-  padding: 0;
   margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.q-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.6rem 0.6rem;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: none;
+  color: var(--text);
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.q-item:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.q-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.q-item.is-active {
+  background: var(--hover);
+  border-color: var(--primary);
+}
+
+.q-num {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 0.78rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.q-short {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-card {
+  padding: 1.75rem 2rem;
   display: flex;
   flex-direction: column;
   gap: 0.9rem;
 }
 
-.question-card {
-  padding: 1.1rem 1.25rem;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-}
-
-.question-header {
+.editor-head {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  margin-bottom: 0.5rem;
-}
-
-.question-number {
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--ink-faint);
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  margin: 0 0 0.5rem;
+  align-items: center;
+  font-size: 1.05rem;
 }
 
 .question-actions {
@@ -470,54 +625,28 @@ onMounted(fetchQuiz)
   gap: 0.5rem;
 }
 
-.edit-btn {
-  background: none;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  padding: 0.3rem 0.7rem;
-  font-size: 0.78rem;
-  cursor: pointer;
-  color: var(--ink-soft);
-}
-
-.delete-btn {
-  background: none;
-  border: 1px solid #f0c4c4;
-  color: var(--danger);
-  border-radius: 6px;
-  padding: 0.3rem 0.7rem;
-  font-size: 0.78rem;
-  cursor: pointer;
-}
-
-.delete-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .question-text {
-  font-size: 0.98rem;
+  font-family: var(--font-serif);
+  font-size: 1.25rem;
   line-height: 1.6;
-  margin: 0 0 0.9rem;
 }
 
 .choice-list {
   list-style: none;
+  margin: 0;
   padding: 0;
-  margin: 0 0 0.75rem;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.6rem;
 }
 
 .choice-item {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.5rem 0.7rem;
-  border-radius: 8px;
+  gap: 0.8rem;
+  padding: 0.8rem 1rem;
   border: 1px solid var(--border);
-  font-size: 0.9rem;
+  border-radius: 12px;
 }
 
 .choice-item.is-correct {
@@ -525,57 +654,64 @@ onMounted(fetchQuiz)
   background: var(--success-bg);
 }
 
+.choice-text {
+  flex: 1;
+  min-width: 0;
+}
+
 .choice-label {
-  flex-shrink: 0;
-  width: 22px;
-  height: 22px;
+  flex: none;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
-  background: var(--paper);
-  display: inline-flex;
+  border: 1px solid var(--border);
+  display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--ink-soft);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted);
 }
 
 .correct-tag {
-  margin-left: auto;
-  font-size: 0.72rem;
-  font-weight: 700;
+  flex: none;
+  font-size: 0.78rem;
+  font-weight: 600;
   color: var(--success);
-  white-space: nowrap;
 }
 
-.explanation-text {
-  font-size: 0.85rem;
-  color: var(--ink-soft);
-  background: var(--paper);
-  border-radius: 8px;
-  padding: 0.6rem 0.75rem;
-  margin: 0;
-  line-height: 1.6;
+.explanation {
+  background: var(--info-bg);
+  color: var(--info);
+  border-radius: 12px;
+  padding: 0.9rem 1.1rem;
+  font-size: 0.92rem;
+  line-height: 1.7;
 }
 
-/* --- แก้ไขคำถาม --- */
-.edit-textarea {
+.field-label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  margin-top: 0.4rem;
+}
+
+.edit-textarea,
+.choice-input {
   width: 100%;
-  padding: 0.7rem;
-  border-radius: 8px;
-  border: 1px solid var(--border-strong);
-  font-size: 0.9rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.95rem;
   line-height: 1.6;
-  font-family: var(--font-body);
   resize: vertical;
-  box-sizing: border-box;
-  margin-bottom: 0.75rem;
 }
 
 .choice-edit-list {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  gap: 0.6rem;
 }
 
 .choice-edit-row {
@@ -585,58 +721,134 @@ onMounted(fetchQuiz)
 }
 
 .choice-edit-row input[type='radio'] {
-  accent-color: var(--indigo);
-  flex-shrink: 0;
-}
-
-.choice-input {
-  flex: 1;
-  padding: 0.45rem 0.6rem;
-  border-radius: 6px;
-  border: 1px solid var(--border-strong);
-  font-size: 0.88rem;
-  font-family: var(--font-body);
-}
-
-.explanation-label {
-  display: block;
-  font-size: 0.8rem;
-  color: var(--ink-soft);
-  margin-bottom: 0.75rem;
+  accent-color: var(--primary);
+  width: 18px;
+  height: 18px;
+  flex: none;
 }
 
 .edit-actions {
   display: flex;
-  gap: 0.6rem;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+
+.save-btn,
+.cancel-btn,
+.edit-btn,
+.delete-btn {
+  padding: 0.45rem 1rem;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  cursor: pointer;
 }
 
 .save-btn {
-  padding: 0.5rem 1.05rem;
-  border-radius: 8px;
   border: none;
-  background: var(--indigo);
-  color: #ffffff;
-  font-size: 0.85rem;
+  background: var(--primary);
+  color: var(--on-primary);
   font-weight: 600;
-  cursor: pointer;
 }
 
-.save-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.cancel-btn,
+.edit-btn {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
 }
 
-.cancel-btn {
-  padding: 0.5rem 1.05rem;
-  border-radius: 8px;
-  border: 1px solid var(--border-strong);
+.edit-btn:hover,
+.cancel-btn:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.delete-btn {
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border));
   background: none;
-  font-size: 0.85rem;
-  cursor: pointer;
+  color: var(--danger);
 }
 
-.cancel-btn:disabled {
+.delete-btn:hover:not(:disabled) {
+  background: var(--danger-bg);
+}
+
+.save-btn:disabled,
+.cancel-btn:disabled,
+.delete-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* --- ขวา --- */
+.info-col {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  position: sticky;
+  top: 1.25rem;
+}
+
+@media (max-width: 1100px) {
+  .info-col {
+    position: static;
+  }
+}
+
+.info-card {
+  padding: 1.2rem 1.3rem;
+}
+
+.info-title {
+  font-weight: 600;
+  margin-bottom: 0.8rem;
+}
+
+.info-list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+}
+
+.info-list div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.info-list dt {
+  color: var(--text-muted);
+}
+
+.info-list dd {
+  margin: 0;
+  text-align: right;
+}
+
+.source-box {
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.82rem;
+}
+
+.source-title {
+  color: var(--text-muted);
+  margin-bottom: 0.4rem;
+}
+
+.source-box ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.tip-card p {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.65;
+  color: var(--text-muted);
 }
 </style>

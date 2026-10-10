@@ -324,7 +324,7 @@ onMounted(async () => {
   display: inline-block;
   font-size: 0.72rem;
   font-weight: 700;
-  color: #8a6d1a;
+  color: var(--warning);
   background: var(--highlighter-soft);
   border: 1px solid var(--highlighter);
   padding: 0.2rem 0.55rem;
@@ -370,7 +370,7 @@ onMounted(async () => {
 .lock-note {
   margin-top: 1rem;
   font-size: 0.8rem;
-  color: #8a6d1a;
+  color: var(--warning);
   background: var(--highlighter-soft);
   padding: 0.5rem 0.75rem;
   border-radius: 6px;
@@ -405,7 +405,7 @@ onMounted(async () => {
   border-radius: 8px;
   border: none;
   background: var(--indigo);
-  color: #ffffff;
+  color: var(--on-primary);
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;

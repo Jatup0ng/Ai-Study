@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../composables/useAuth'
@@ -463,7 +463,7 @@ async function handleGenerateSummary() {
       body: { document_ids: selectedDocumentIds.value }
     })
 
-    if (error) throw new Error(error.message || 'เรียก Edge Function ไม่สำเร็จ')
+    if (error) throw new Error(await describeInvokeError(error))
     if (data?.error) throw new Error(data.error)
 
     selectedDocumentIds.value = []
@@ -491,7 +491,7 @@ async function handleGenerateQuiz() {
       body: { document_ids: selectedDocumentIds.value, question_count: quizQuestionCount.value }
     })
 
-    if (error) throw new Error(error.message || 'เรียก Edge Function ไม่สำเร็จ')
+    if (error) throw new Error(await describeInvokeError(error))
     if (data?.error) throw new Error(data.error)
 
     selectedDocumentIds.value = []
@@ -519,7 +519,7 @@ async function handleGenerateFlashcard() {
       body: { document_ids: selectedDocumentIds.value, card_count: flashcardCardCount.value }
     })
 
-    if (error) throw new Error(error.message || 'เรียก Edge Function ไม่สำเร็จ')
+    if (error) throw new Error(await describeInvokeError(error))
     if (data?.error) throw new Error(data.error)
 
     selectedDocumentIds.value = []
@@ -530,6 +530,37 @@ async function handleGenerateFlashcard() {
     isGeneratingFlashcard.value = false
   }
 }
+// --- แปลง error จาก Edge Function ให้อ่านรู้เรื่อง (supabase-js ให้แค่ "non-2xx status code" ซึ่งไม่บอกสาเหตุ) ---
+async function describeInvokeError(error) {
+  const res = error?.context
+  const status = res?.status
+  if (status === 504 || status === 546 || status === 502 || status === 503) {
+    return 'AI ใช้เวลานานเกินกำหนด (ฝั่ง Gemini ไม่ตอบกลับ) — ลองสร้างใหม่อีกครั้ง หรือลดจำนวนข้อ/จำนวนไฟล์'
+  }
+  try {
+    const body = await res.json()
+    if (body?.error) return body.error
+  } catch {
+    // body ไม่ใช่ JSON — ใช้ข้อความสำรองด้านล่าง
+  }
+  return error?.message || 'เรียก Edge Function ไม่สำเร็จ'
+}
+
+// --- แสดงเวลาที่รอ AI อยู่ (กันรู้สึกว่าหน้าค้าง) ---
+const anyGenerating = computed(
+  () => isGenerating.value || isGeneratingQuiz.value || isGeneratingFlashcard.value
+)
+const waitSeconds = ref(0)
+let waitTimer = null
+
+watch(anyGenerating, (busy) => {
+  clearInterval(waitTimer)
+  waitSeconds.value = 0
+  if (busy) waitTimer = setInterval(() => waitSeconds.value++, 1000)
+})
+
+onBeforeUnmount(() => clearInterval(waitTimer))
+
 </script>
 
 <template>
@@ -541,8 +572,16 @@ async function handleGenerateFlashcard() {
 
     <template v-else-if="subject">
       <header class="page-header">
-        <h1>{{ subject.name }}</h1>
-        <div>
+        <div class="title-block">
+          <h1>{{ subject.name }}</h1>
+          <div class="chips">
+            <span class="chip">{{ documents.length }} เอกสาร</span>
+            <span class="chip">{{ summaries.length }} สรุป</span>
+            <span class="chip">{{ quizzes.length }} Quiz</span>
+            <span class="chip">{{ flashcardSets.length }} ชุดบัตรคำ</span>
+          </div>
+        </div>
+        <div class="upload-block">
           <input
             ref="fileInput"
             type="file"
@@ -553,11 +592,11 @@ async function handleGenerateFlashcard() {
           <button class="upload-btn" :disabled="isUploading" @click="openFilePicker">
             {{ isUploading ? 'กำลังอัปโหลด...' : '+ อัปโหลดเอกสาร' }}
           </button>
+          <p class="upload-hint">PDF, Word (.docx), PowerPoint (.pptx) ไม่เกิน 10MB</p>
         </div>
       </header>
 
-      <p v-if="uploadError" class="error-text">{{ uploadError }}</p>
-      <p class="upload-hint">รองรับ PDF, Word (.docx), PowerPoint (.pptx) ขนาดไม่เกิน 10MB</p>
+      <p v-if="uploadError" class="error-text" role="alert">{{ uploadError }}</p>
 
       <!-- ช่องรับลิงก์แชร์จากเพื่อน -->
       <div class="import-box">
@@ -673,7 +712,10 @@ async function handleGenerateFlashcard() {
               >
                 {{ isGenerating ? 'AI กำลังสรุป... (อาจใช้เวลาสักครู่)' : '✨ สรุปรวมจากไฟล์ที่เลือก' }}
               </button>
-              <p v-if="generateError" class="error-text">{{ generateError }}</p>
+              <p v-if="isGenerating" class="generate-wait" role="status">
+                รอ AI มาแล้ว {{ waitSeconds }} วินาที — ปกติใช้ 10–30 วินาที หากเกิน 2 นาทีระบบจะแจ้งให้ลองใหม่
+              </p>
+              <p v-if="generateError" class="error-text" role="alert">{{ generateError }}</p>
             </div>
 
             <h3 class="sub-title">สรุปที่มีอยู่แล้ว</h3>
@@ -733,7 +775,10 @@ async function handleGenerateFlashcard() {
               >
                 {{ isGeneratingQuiz ? 'AI กำลังออกข้อสอบ... (อาจใช้เวลาสักครู่)' : '🧩 สร้าง Quiz จากไฟล์ที่เลือก' }}
               </button>
-              <p v-if="generateQuizError" class="error-text">{{ generateQuizError }}</p>
+              <p v-if="isGeneratingQuiz" class="generate-wait" role="status">
+                รอ AI มาแล้ว {{ waitSeconds }} วินาที — ปกติใช้ 10–30 วินาที หากเกิน 2 นาทีระบบจะแจ้งให้ลองใหม่
+              </p>
+              <p v-if="generateQuizError" class="error-text" role="alert">{{ generateQuizError }}</p>
             </div>
 
             <h3 class="sub-title">Quiz ที่มีอยู่แล้ว</h3>
@@ -799,7 +844,10 @@ async function handleGenerateFlashcard() {
               >
                 {{ isGeneratingFlashcard ? 'AI กำลังทำ Flashcard... (อาจใช้เวลาสักครู่)' : '🎴 สร้าง Flashcard จากไฟล์ที่เลือก' }}
               </button>
-              <p v-if="generateFlashcardError" class="error-text">{{ generateFlashcardError }}</p>
+              <p v-if="isGeneratingFlashcard" class="generate-wait" role="status">
+                รอ AI มาแล้ว {{ waitSeconds }} วินาที — ปกติใช้ 10–30 วินาที หากเกิน 2 นาทีระบบจะแจ้งให้ลองใหม่
+              </p>
+              <p v-if="generateFlashcardError" class="error-text" role="alert">{{ generateFlashcardError }}</p>
             </div>
 
             <h3 class="sub-title">Flashcard ที่มีอยู่แล้ว</h3>
@@ -845,120 +893,153 @@ async function handleGenerateFlashcard() {
 
 <style scoped>
 .page {
-  max-width: 960px;
+  max-width: 1120px;
   margin: 0 auto;
-  padding: 2rem 1.5rem 4rem;
+  padding: 1.75rem 2.5rem 4rem;
+}
+
+@media (max-width: 860px) {
+  .page {
+    padding: 1.25rem 1rem 3rem;
+  }
 }
 
 .back-link {
   display: inline-block;
-  color: var(--ink-soft);
+  color: var(--text-muted);
   font-size: 0.85rem;
   text-decoration: none;
-  margin-bottom: 1.25rem;
+  margin-bottom: 1.1rem;
 }
 
 .back-link:hover {
-  text-decoration: underline;
+  color: var(--primary);
 }
 
 .page-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 0.5rem;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.title-block {
+  min-width: 0;
 }
 
 .page-header h1 {
-  font-size: 1.6rem;
-  margin: 0;
+  font-size: 1.9rem;
+  margin: 0 0 0.8rem;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.chip {
+  padding: 0.2rem 0.8rem;
+  border-radius: 99px;
+  background: var(--hover);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.upload-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.4rem;
+  flex-shrink: 0;
 }
 
 .upload-btn {
-  padding: 0.6rem 1.1rem;
-  border-radius: 8px;
+  padding: 0.65rem 1.3rem;
+  border-radius: 10px;
   border: none;
-  background: var(--indigo);
-  color: #ffffff;
-  font-size: 0.9rem;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: 0.92rem;
   font-weight: 600;
   cursor: pointer;
-  white-space: nowrap;
 }
 
 .upload-btn:hover:not(:disabled) {
-  background: var(--indigo-dark);
+  background: var(--primary-strong);
 }
 
 .upload-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
 .upload-hint {
-  font-size: 0.8rem;
-  color: var(--ink-faint);
-  margin: 0 0 1.5rem;
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
 }
 
 .status-text {
-  color: var(--ink-soft);
+  color: var(--text-muted);
   font-size: 0.9rem;
 }
 
 .error-text {
   color: var(--danger);
+  background: var(--danger-bg);
+  border-radius: 10px;
+  padding: 0.6rem 0.9rem;
   font-size: 0.85rem;
-  margin: 0.5rem 0;
 }
 
+/* --- รับเนื้อหาจากเพื่อน --- */
 .import-box {
-  margin: 0 0 1.25rem;
-  padding: 0.9rem 1rem;
-  background: var(--highlighter-soft);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: 16px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
 }
 
 .import-label {
   display: block;
   font-size: 0.9rem;
   font-weight: 600;
-  color: var(--ink);
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.6rem;
 }
 
 .import-row {
   display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+  gap: 0.6rem;
 }
 
 .import-input {
   flex: 1;
-  min-width: 200px;
-  padding: 0.55rem 0.7rem;
-  border-radius: 8px;
-  border: 1px solid var(--border-strong);
+  min-width: 0;
+  padding: 0.6rem 0.9rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
   font-size: 0.9rem;
-  font-family: var(--font-body);
-  background: var(--card);
 }
 
 .import-btn {
-  padding: 0.55rem 1rem;
-  border-radius: 8px;
+  padding: 0.6rem 1.1rem;
+  border-radius: 10px;
   border: none;
-  background: var(--indigo);
-  color: #ffffff;
-  font-size: 0.9rem;
+  background: var(--hover);
+  color: var(--primary);
+  font-size: 0.88rem;
   font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
 }
 
 .import-btn:hover:not(:disabled) {
-  background: var(--indigo-dark);
+  background: color-mix(in srgb, var(--primary) 20%, var(--hover));
 }
 
 .import-btn:disabled {
@@ -968,76 +1049,83 @@ async function handleGenerateFlashcard() {
 
 .import-hint {
   margin: 0.5rem 0 0;
-  font-size: 0.8rem;
-  color: var(--ink-soft);
+  font-size: 0.78rem;
+  color: var(--text-muted);
 }
 
+/* --- โครงสองฝั่ง --- */
 .workspace {
   display: grid;
-  grid-template-columns: 1fr 1.1fr;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
   gap: 1.5rem;
   align-items: start;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 860px) {
   .workspace {
     grid-template-columns: 1fr;
   }
 }
 
+.sources-pane,
+.studio-pane {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 1.4rem 1.5rem;
+  box-shadow: var(--shadow-card);
+}
+
 .pane-title {
-  font-size: 1rem;
-  margin: 0 0 0.25rem;
+  font-size: 1.15rem;
+  margin: 0 0 0.3rem;
 }
 
 .pane-hint {
-  font-size: 0.8rem;
-  color: var(--ink-faint);
   margin: 0 0 1rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
 }
 
-.sub-title {
-  font-size: 0.9rem;
-  margin: 1.75rem 0 0.75rem;
-  color: var(--ink-soft);
-}
-
-/* --- Sources pane --- */
+/* --- รายการเอกสาร --- */
 .source-list {
   list-style: none;
-  padding: 0;
   margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.6rem;
 }
 
 .source-item {
   border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--card);
+  border-radius: 14px;
+  background: var(--surface);
   transition: border-color 0.12s ease, background 0.12s ease;
 }
 
+.source-item:hover {
+  background: var(--hover);
+}
+
 .source-item.is-checked {
-  border-color: var(--highlighter);
-  background: var(--highlighter-soft);
+  border-color: var(--primary);
+  background: var(--hover);
 }
 
 .source-row {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
+  gap: 0.8rem;
   padding: 0.8rem 0.9rem;
   cursor: pointer;
 }
 
 .source-checkbox {
-  flex-shrink: 0;
   width: 18px;
   height: 18px;
-  accent-color: var(--indigo);
-  cursor: pointer;
+  accent-color: var(--primary);
+  flex: none;
 }
 
 .source-info {
@@ -1045,11 +1133,12 @@ async function handleGenerateFlashcard() {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.3rem;
 }
 
 .source-name {
   font-size: 0.92rem;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1057,35 +1146,30 @@ async function handleGenerateFlashcard() {
 
 .source-meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
-  flex-wrap: wrap;
+  font-size: 0.75rem;
+  color: var(--text-muted);
 }
 
 .source-kind {
-  font-size: 0.68rem;
-  font-weight: 600;
-  color: var(--ink-soft);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 0.1rem 0.35rem;
-}
-
-.source-date {
-  font-size: 0.75rem;
-  color: var(--ink-faint);
+  padding: 0.05rem 0.4rem;
+  font-size: 0.7rem;
 }
 
 .status-badge {
   font-size: 0.7rem;
   font-weight: 600;
-  padding: 0.15rem 0.5rem;
-  border-radius: 20px;
+  padding: 0.12rem 0.55rem;
+  border-radius: 99px;
 }
 
 .status-processing {
-  background: #fdf0d5;
-  color: #8a5a00;
+  background: var(--warning-bg);
+  color: var(--warning);
 }
 
 .status-ready {
@@ -1098,134 +1182,151 @@ async function handleGenerateFlashcard() {
   color: var(--danger);
 }
 
-.delete-doc-btn {
+.delete-doc-btn,
+.delete-content-btn {
   flex-shrink: 0;
   background: none;
-  border: 1px solid var(--border-strong);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border));
   color: var(--danger);
-  border-radius: 6px;
-  padding: 0.3rem 0.55rem;
-  font-size: 0.72rem;
+  border-radius: 8px;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.75rem;
   cursor: pointer;
 }
 
-.delete-doc-btn:disabled {
+.delete-doc-btn:hover:not(:disabled),
+.delete-content-btn:hover:not(:disabled) {
+  background: var(--danger-bg);
+}
+
+.delete-doc-btn:disabled,
+.delete-content-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-/* --- Studio pane --- */
+/* --- Studio --- */
 .studio-tabs {
   display: flex;
-  gap: 0.4rem;
-  margin-bottom: 1rem;
-  border-bottom: 1px solid var(--border);
+  gap: 2px;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--hover);
+  margin: 0.8rem 0 1.1rem;
 }
 
 .studio-tab {
-  padding: 0.55rem 0.9rem;
+  flex: 1;
+  padding: 0.5rem 0.6rem;
   border: none;
+  border-radius: 9px;
   background: none;
   font-size: 0.85rem;
   font-weight: 600;
-  color: var(--ink-soft);
+  color: var(--text-muted);
   cursor: pointer;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
 }
 
 .studio-tab.is-active {
-  color: var(--indigo);
-  border-bottom-color: var(--indigo);
+  background: var(--surface);
+  color: var(--primary);
+  box-shadow: var(--shadow-card);
+}
+
+.generate-box {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1rem 1.1rem;
+  margin-bottom: 1.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.generate-status {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
 }
 
 .question-count-label {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.82rem;
-  color: var(--ink-soft);
-  margin: 0 0 0.75rem;
+  gap: 0.6rem;
+  font-size: 0.88rem;
 }
 
 .question-count-input {
-  width: 60px;
-  padding: 0.35rem 0.5rem;
-  border-radius: 6px;
-  border: 1px solid var(--border-strong);
-  font-size: 0.85rem;
-}
-
-.quiz-badge {
-  color: #1e5a9c;
-  background: #e8f1fb;
-  border-color: #b9d7f2;
-}
-
-.flashcard-badge {
-  color: #7a3e9d;
-  background: #f3e8fb;
-  border-color: #ddb9f2;
-}
-
-.generate-box {
+  width: 76px;
+  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
   border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card);
-  padding: 1.1rem;
-}
-
-.generate-status {
-  font-size: 0.85rem;
-  color: var(--ink-soft);
-  margin: 0 0 0.75rem;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.9rem;
 }
 
 .generate-btn {
   width: 100%;
-  padding: 0.7rem 1rem;
-  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
   border: none;
-  background: var(--indigo);
-  color: #ffffff;
-  font-size: 0.9rem;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: 0.92rem;
   font-weight: 600;
   cursor: pointer;
 }
 
 .generate-btn:hover:not(:disabled) {
-  background: var(--indigo-dark);
+  background: var(--primary-strong);
 }
 
 .generate-btn:disabled {
-  opacity: 0.45;
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
+.generate-wait {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--info);
+  background: var(--info-bg);
+  border-radius: 10px;
+  padding: 0.5rem 0.75rem;
+}
+
+.sub-title {
+  font-size: 1rem;
+  margin: 0 0 0.8rem;
+}
+
+/* --- การ์ดสรุป / Quiz / Flashcard ที่มีอยู่แล้ว --- */
 .summary-list {
   list-style: none;
-  padding: 0;
   margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.75rem;
 }
 
 .summary-card {
   border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--card);
-  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+  border-radius: 14px;
+  background: var(--surface);
+  overflow: hidden;
 }
 
 .summary-card:hover {
-  border-color: var(--border-strong);
-  box-shadow: 0 2px 10px rgba(27, 29, 41, 0.06);
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
 }
 
 .summary-link {
   display: block;
-  padding: 0.9rem 1rem;
+  padding: 0.9rem 1rem 0.6rem;
   color: inherit;
   text-decoration: none;
 }
@@ -1234,130 +1335,96 @@ async function handleGenerateFlashcard() {
   display: inline-block;
   font-size: 0.68rem;
   font-weight: 700;
-  color: #8a6d1a;
-  background: var(--highlighter-soft);
-  border: 1px solid var(--highlighter);
-  padding: 0.1rem 0.45rem;
-  border-radius: 6px;
-  margin-bottom: 0.5rem;
+  padding: 0.1rem 0.55rem;
+  border-radius: 99px;
+  background: var(--warning-bg);
+  color: var(--warning);
+  margin-bottom: 0.45rem;
 }
 
-.summary-snippet {
-  font-size: 0.88rem;
-  line-height: 1.6;
-  margin: 0 0 0.4rem;
-  color: var(--ink);
+.quiz-badge {
+  background: var(--info-bg);
+  color: var(--info);
+}
+
+.flashcard-badge {
+  background: color-mix(in srgb, var(--secondary) 14%, transparent);
+  color: color-mix(in srgb, var(--secondary) 70%, var(--text));
 }
 
 .card-title {
-  font-family: var(--font-heading);
-  font-size: 0.95rem;
-  font-weight: 700;
-  line-height: 1.45;
   margin: 0 0 0.5rem;
-  color: var(--ink);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  font-size: 0.98rem;
+  font-weight: 600;
+  line-height: 1.45;
 }
 
 .source-files {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
-  margin: 0 0 0.5rem;
+  margin-bottom: 0.4rem;
 }
 
 .file-chip {
   max-width: 100%;
+  padding: 0.1rem 0.55rem;
+  border-radius: 99px;
+  background: var(--hover);
+  color: var(--text-muted);
   font-size: 0.72rem;
-  color: var(--ink-soft);
-  background: var(--paper);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.1rem 0.5rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.file-chip-more {
-  color: var(--indigo);
-  font-weight: 600;
-}
-
 .file-chip-missing {
-  font-style: italic;
-  color: var(--ink-faint);
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 
 .summary-meta {
-  font-size: 0.75rem;
-  color: var(--ink-faint);
   margin: 0;
+  font-size: 0.76rem;
+  color: var(--text-muted);
 }
 
+.card-footer,
 .quiz-actions {
   display: flex;
+  align-items: center;
   gap: 0.5rem;
-  padding: 0 1rem 0.9rem;
+  padding: 0.6rem 1rem 0.8rem;
+}
+
+.card-footer {
+  justify-content: flex-end;
+}
+
+.quiz-actions .delete-content-btn {
+  margin-left: auto;
 }
 
 .practice-link,
 .review-link {
-  flex: 1;
-  text-align: center;
-  padding: 0.5rem 0.7rem;
+  padding: 0.35rem 0.85rem;
   border-radius: 8px;
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: 600;
   text-decoration: none;
 }
 
 .practice-link {
-  background: var(--indigo);
-  color: #ffffff;
-}
-
-.practice-link:hover {
-  background: var(--indigo-dark);
+  background: var(--primary);
+  color: var(--on-primary);
 }
 
 .review-link {
-  border: 1px solid var(--border-strong);
-  color: var(--ink);
-  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text);
 }
 
 .review-link:hover {
-  border-color: var(--ink-faint);
-}
-
-.card-footer {
-  display: flex;
-  justify-content: flex-end;
-  padding: 0 1rem 0.8rem;
-}
-
-.delete-content-btn {
-  flex-shrink: 0;
-  background: none;
-  border: 1px solid var(--border-strong);
-  color: var(--danger);
-  border-radius: 8px;
-  padding: 0.45rem 0.8rem;
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-
-.delete-content-btn:hover:not(:disabled) {
-  background: var(--danger-bg);
-}
-
-.delete-content-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  background: var(--hover);
 }
 </style>

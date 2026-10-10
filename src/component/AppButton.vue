@@ -71,7 +71,7 @@ defineOptions({ inheritAttrs: false })
 /* Variant: Primary — เดิมคือ generate-btn / submit-btn / save-btn / create-btn */
 .variant-primary {
   background: var(--indigo);
-  color: #ffffff;
+  color: var(--on-primary);
 }
 
 .variant-primary:hover:not(:disabled) {

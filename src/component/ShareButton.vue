@@ -318,7 +318,7 @@ async function copyLink() {
   border-radius: 8px;
   border: none;
   background: var(--indigo);
-  color: #ffffff;
+  color: var(--on-primary);
   font-size: 0.88rem;
   font-weight: 600;
   cursor: pointer;

@@ -66,7 +66,7 @@ async function handleGoogleLogin() {
   border-radius: 12px;
   background: var(--highlighter-soft);
   border: 1px solid var(--highlighter);
-  color: #8a6d1a;
+  color: var(--warning);
   font-family: var(--font-heading);
   font-weight: 700;
   margin-bottom: 1.25rem;
@@ -90,7 +90,7 @@ async function handleGoogleLogin() {
   padding: 0.75rem 1rem;
   border-radius: 10px;
   border: 1px solid var(--border-strong);
-  background: #ffffff;
+  background: var(--surface);
   font-size: 0.95rem;
   font-weight: 600;
   font-family: var(--font-body);

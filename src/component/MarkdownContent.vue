@@ -43,8 +43,14 @@ function fixTextMode(text) {
   )
 }
 
+// Gemini บางครั้งเขียนเซ็ตเป็น \hline{a, b\} แทน \{a, b\} — \hline ใช้ได้แค่ในตาราง ถ้าตามด้วย { ตรง ๆ
+// แปลว่าตั้งใจจะเขียนปีกกาเซ็ต (ไม่งั้น KaTeX parse พังและโชว์ข้อความสีแดง)
+function fixHline(text) {
+  return text.replace(/\\hline\s*\{/g, '\\{')
+}
+
 const html = computed(() => {
-  const text = fixTextMode(normalizeMath(props.source || ''))
+  const text = fixTextMode(normalizeMath(fixHline(props.source || '')))
   const raw = props.inline
     ? md.parseInline(text, { breaks: props.breaks })
     : md.parse(text, { breaks: props.breaks })
@@ -92,6 +98,9 @@ const html = computed(() => {
 
 .md :deep(p) { margin: 0.6em 0; }
 .md-inline { line-height: inherit; }
+
+/* สูตรที่ KaTeX อ่านไม่ออก — ใช้สีแดงตามธีม (ค่าเริ่มต้นของ KaTeX เป็น #cc0000 ตายตัว) */
+.md :deep(.katex-error) { color: var(--danger); }
 .md-inline :deep(.katex-display) { margin: 0.5rem 0; padding: 0.4rem 0.6rem; }
 
 /* ตัวหนา = คำสำคัญ ไฮไลต์เหลืองแบบปากกาเน้นข้อความ */
