@@ -19,7 +19,7 @@ defineProps({
 }
 
 .type-status {
-  color: var(--ink-soft);
+  color: var(--text-muted);
   margin-bottom: 0; /* ข้อความสถานะปกติมักไม่ต้องเว้นระยะล่างเท่า Error */
 }
 

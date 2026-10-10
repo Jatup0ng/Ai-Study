@@ -33,8 +33,8 @@ defineProps({
 
 .variant-ai {
   color: var(--warning);
-  background: var(--highlighter-soft);
-  border-color: var(--highlighter);
+  background: var(--warning-bg);
+  border-color: var(--warning);
 }
 
 .variant-quiz {
@@ -68,8 +68,8 @@ defineProps({
 }
 
 .variant-neutral {
-  color: var(--ink-soft);
-  background: var(--paper);
+  color: var(--text-muted);
+  background: var(--bg);
   border-color: var(--border-strong);
 }
 </style>

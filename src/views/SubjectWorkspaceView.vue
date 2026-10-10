@@ -690,7 +690,7 @@ const studioItems = computed(() => {
       meta: `${q.question_count} ข้อ · ${formatDate(q.created_at)}`,
       open: null,
       actions: [
-        { label: '✏️ ทำข้อสอบ', primary: true, to: { name: 'quiz-practice', params: { quizId: q.quiz_id } } },
+        { label: 'ทำข้อสอบ', primary: true, to: { name: 'quiz-practice', params: { quizId: q.quiz_id } } },
         { label: 'ตรวจสอบ/แก้ไข', to: { name: 'quiz-detail', params: { quizId: q.quiz_id } } }
       ]
     }))
@@ -712,7 +712,12 @@ const KIND_CLASS = { PDF: 'kind-pdf', Word: 'kind-word', PowerPoint: 'kind-ppt' 
 
 <template>
   <div class="page">
-    <RouterLink :to="{ name: 'subjects' }" class="back-link">← วิชาของฉัน</RouterLink>
+    <RouterLink :to="{ name: 'subjects' }" class="back-link">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M15 5l-7 7 7 7" />
+      </svg>
+      วิชาของฉัน
+    </RouterLink>
 
     <p v-if="errorMessage" class="state-box is-error" role="alert">{{ errorMessage }}</p>
     <p v-if="isLoadingSubject" class="state-box">กำลังโหลด...</p>
@@ -750,7 +755,7 @@ const KIND_CLASS = { PDF: 'kind-pdf', Word: 'kind-word', PowerPoint: 'kind-ppt' 
               </svg>
               {{ isUploading ? 'กำลังอัปโหลด...' : 'อัปโหลดเอกสาร' }}
             </button>
-            <p class="upload-hint">หรือลากไฟล์มาวางที่นี่ · PDF, Word, PowerPoint ไม่เกิน 10MB</p>
+            <p class="upload-hint">หรือลากไฟล์มาวางที่นี่ · PDF, Word, PowerPoint <span class="size-limit">ไม่เกิน 10MB</span></p>
           </div>
         </div>
 
@@ -765,9 +770,14 @@ const KIND_CLASS = { PDF: 'kind-pdf', Word: 'kind-word', PowerPoint: 'kind-ppt' 
       <!-- ============ รับลิงก์แชร์จากเพื่อน ============ -->
       <section class="import-box" aria-labelledby="import-title">
         <div class="import-head">
-          <span class="import-icon" aria-hidden="true">🔗</span>
+          <span class="import-icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5" />
+              <path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5" />
+            </svg>
+          </span>
           <div>
-            <h2 id="import-title" class="import-title">รับเนื้อหาจากเพื่อน</h2>
+            <h2 id="import-title" class="import-title">Import</h2>
             <p class="import-sub">วางลิงก์ที่ได้รับ เพื่อดูตัวอย่างก่อน แล้วกด Clone เข้าวิชา "{{ subject.name }}"</p>
           </div>
         </div>
@@ -796,7 +806,7 @@ const KIND_CLASS = { PDF: 'kind-pdf', Word: 'kind-word', PowerPoint: 'kind-ppt' 
           <div class="panel-head">
             <div>
               <h2 id="sources-title" class="panel-title">แหล่งเอกสาร</h2>
-              <p class="panel-hint">ติ๊กเลือกได้หลายไฟล์ เพื่อรวมเป็นสรุปเดียวกัน</p>
+              <p class="panel-hint">เลือกได้หลายไฟล์ เพื่อรวมเป็นสรุปเดียวกัน</p>
             </div>
             <button
               v-if="documents.length > 1"
@@ -810,7 +820,12 @@ const KIND_CLASS = { PDF: 'kind-pdf', Word: 'kind-word', PowerPoint: 'kind-ppt' 
 
           <p v-if="isLoadingDocuments" class="muted-text">กำลังโหลดเอกสาร...</p>
           <div v-else-if="documents.length === 0" class="empty-state">
-            <span class="empty-icon" aria-hidden="true">📄</span>
+            <span class="empty-icon" aria-hidden="true">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+                <path d="M14 3v5h5M9 13h6M9 17h6" />
+              </svg>
+            </span>
             <p class="empty-title">ยังไม่มีเอกสารในวิชานี้</p>
             <p class="empty-sub">อัปโหลดไฟล์แรกได้เลย แล้วให้ AI ช่วยสรุปและออกข้อสอบ</p>
             <button type="button" class="btn-secondary" :disabled="isUploading" @click="openFilePicker">+ อัปโหลดเอกสาร</button>
@@ -1015,13 +1030,28 @@ const KIND_CLASS = { PDF: 'kind-pdf', Word: 'kind-word', PowerPoint: 'kind-ppt' 
 }
 
 .back-link {
-  display: inline-block;
-  margin-bottom: 1rem;
-  color: var(--text-muted);
-  font-size: 0.88rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 1.1rem;
+  padding: 0.45rem 0.9rem 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
   text-decoration: none;
+  box-shadow: var(--shadow-card);
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
 }
-.back-link:hover { color: var(--primary); }
+.back-link:hover {
+  background: var(--hover);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.back-link:hover svg { transform: translateX(-2px); }
+.back-link svg { transition: transform 0.15s ease; }
 
 .state-box {
   margin: 0 0 1rem;
@@ -1127,6 +1157,7 @@ const KIND_CLASS = { PDF: 'kind-pdf', Word: 'kind-word', PowerPoint: 'kind-ppt' 
 
 .upload-block { display: flex; flex-direction: column; align-items: flex-end; gap: 0.45rem; }
 .upload-hint { margin: 0; color: var(--text-muted); font-size: 0.78rem; }
+.size-limit { color: var(--danger); font-weight: 600; }
 
 .stats {
   display: grid;
@@ -1165,6 +1196,7 @@ const KIND_CLASS = { PDF: 'kind-pdf', Word: 'kind-word', PowerPoint: 'kind-ppt' 
   height: 38px;
   border-radius: 12px;
   background: var(--info-bg);
+  color: var(--info);
 }
 .import-title { margin: 0; font-size: 0.98rem; }
 .import-sub { margin: 0.1rem 0 0; color: var(--text-muted); font-size: 0.82rem; }
@@ -1264,7 +1296,7 @@ const KIND_CLASS = { PDF: 'kind-pdf', Word: 'kind-word', PowerPoint: 'kind-ppt' 
   text-align: center;
 }
 .empty-state.compact { padding: 1.25rem 1rem; }
-.empty-icon { font-size: 1.8rem; }
+.empty-icon { display: grid; place-items: center; color: var(--text-muted); }
 .empty-title { margin: 0; font-weight: 600; }
 .empty-sub { margin: 0 0 0.4rem; color: var(--text-muted); font-size: 0.84rem; }
 .empty-state.compact .empty-sub { margin-bottom: 0; }

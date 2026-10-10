@@ -70,23 +70,23 @@ defineOptions({ inheritAttrs: false })
 
 /* Variant: Primary — เดิมคือ generate-btn / submit-btn / save-btn / create-btn */
 .variant-primary {
-  background: var(--indigo);
+  background: var(--primary);
   color: var(--on-primary);
 }
 
 .variant-primary:hover:not(:disabled) {
-  background: var(--indigo-dark);
+  background: var(--primary-strong);
 }
 
 /* Variant: Secondary — เดิมคือ cancel-btn / edit-btn / review-link */
 .variant-secondary {
-  background: var(--card);
-  color: var(--ink);
+  background: var(--surface);
+  color: var(--text);
   border-color: var(--border-strong);
 }
 
 .variant-secondary:hover:not(:disabled) {
-  border-color: var(--ink-faint);
+  border-color: var(--text-faint);
 }
 
 /* Variant: Danger — เดิมคือ delete-btn */

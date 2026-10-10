@@ -74,7 +74,7 @@ const html = computed(() => {
 
 <style scoped>
 /* หน้าตาแบบ "ชีทสรุปสอบ": หัวข้อเด่น, คำสำคัญไฮไลต์, กล่องข้อควรจำ, สูตรเป็นการ์ด */
-.md { line-height: 1.9; word-break: break-word; color: var(--ink); }
+.md { line-height: 1.9; word-break: break-word; color: var(--text); }
 .md :deep(> :first-child) { margin-top: 0; }
 .md :deep(> :last-child) { margin-bottom: 0; }
 
@@ -86,7 +86,7 @@ const html = computed(() => {
   font-size: 1.55rem;
   margin: 0 0 0.8rem;
   padding-bottom: 0.6rem;
-  border-bottom: 3px solid var(--indigo);
+  border-bottom: 3px solid var(--primary);
 }
 .md :deep(h2) {
   font-family: var(--font-serif);
@@ -103,7 +103,7 @@ const html = computed(() => {
   scroll-margin-top: 1.25rem;
 }
 .md :deep(h3::before) { content: '▸ '; color: var(--accent); }
-.md :deep(h4) { font-size: 0.95rem; margin: 1rem 0 0.3rem; color: var(--ink-soft); }
+.md :deep(h4) { font-size: 0.95rem; margin: 1rem 0 0.3rem; color: var(--text-muted); }
 
 .md :deep(p) { margin: 0.6em 0; }
 .md-inline { line-height: inherit; }
@@ -112,17 +112,35 @@ const html = computed(() => {
 .md :deep(.katex-error) { color: var(--danger); }
 .md-inline :deep(.katex-display) { margin: 0.5rem 0; padding: 0.4rem 0.6rem; }
 
-/* ตัวหนา = คำสำคัญ ไฮไลต์เหลืองแบบปากกาเน้นข้อความ */
+/* ตัวหนา = คำสำคัญ — ไฮไลต์ฟ้าอ่อนแบบปากกาเน้นข้อความ อ่านง่ายทั้งโหมดสว่างและมืด
+   (เดิมใช้สีเหลือง/น้ำตาลของ warning ซึ่งในโหมดมืดออกมาหม่นและตัวหนังสือจมไปกับพื้น) */
 .md :deep(strong) {
   font-weight: 700;
-  background: linear-gradient(transparent 55%, var(--highlighter-soft) 55%);
-  padding: 0 0.1em;
+  color: var(--text);
+  background: linear-gradient(transparent 58%, color-mix(in srgb, var(--primary) 32%, transparent) 58%);
+  border-radius: 2px;
+  padding: 0 0.15em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+/* ป้ายหัวกล่อง เช่น "นิยาม:" "ทฤษฎีบท:" — เป็นป้ายสีทึบ ตัวหนังสือชัด แยกจากไฮไลต์คำสำคัญ */
+.md :deep(blockquote strong:first-child),
+.md :deep(blockquote p > strong:first-child) {
+  display: inline-block;
+  background: var(--primary);
+  color: var(--on-primary);
+  padding: 0.02em 0.65em;
+  margin-right: 0.35em;
+  border-radius: 999px;
+  font-size: 0.88em;
+  line-height: 1.6;
 }
 
 .md :deep(ul), .md :deep(ol) { padding-left: 1.5rem; margin: 0.5em 0; }
 .md :deep(li) { margin: 0.3em 0; }
-.md :deep(ul > li)::marker { color: var(--indigo); }
-.md :deep(ol > li)::marker { color: var(--indigo); font-weight: 700; }
+.md :deep(ul > li)::marker { color: var(--primary); }
+.md :deep(ol > li)::marker { color: var(--primary); font-weight: 700; }
 .md :deep(li > ul), .md :deep(li > ol) { margin: 0.2em 0; }
 
 .md :deep(hr) { border: none; border-top: 1px dashed var(--border-strong); margin: 1.75rem 0; }
@@ -141,13 +159,13 @@ const html = computed(() => {
 .md :deep(code) {
   font-family: ui-monospace, Menlo, Consolas, monospace;
   font-size: 0.88em;
-  background: var(--paper);
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 0.05em 0.35em;
 }
 .md :deep(pre) {
-  background: var(--paper);
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.8rem 1rem;

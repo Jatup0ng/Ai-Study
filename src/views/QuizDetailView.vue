@@ -241,7 +241,10 @@ onMounted(fetchQuiz)
 
 <template>
   <div class="page">
-    <RouterLink :to="backLink" class="back-link">← กลับไปหน้าวิชา</RouterLink>
+    <RouterLink :to="backLink" class="back-link">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+      กลับไปหน้าวิชา
+    </RouterLink>
 
     <p v-if="errorMessage" class="error-text" role="alert">{{ errorMessage }}</p>
     <p v-if="isLoading" class="status-text">กำลังโหลด...</p>
@@ -410,14 +413,25 @@ onMounted(fetchQuiz)
 }
 
 .back-link {
-  display: inline-block;
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   margin-bottom: 1.1rem;
+  padding: 0.45rem 0.9rem 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: var(--shadow-card);
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .back-link:hover {
+  background: var(--hover);
+  border-color: var(--primary);
   color: var(--primary);
 }
 

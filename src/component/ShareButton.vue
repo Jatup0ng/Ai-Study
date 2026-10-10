@@ -153,7 +153,10 @@ async function copyLink() {
 
 <template>
   <div class="share-wrap">
-    <button class="share-trigger-btn" @click="openDialog">🔗 แชร์</button>
+    <button class="share-trigger-btn" @click="openDialog">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5" /><path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5" /></svg>
+      แชร์
+    </button>
 
     <div v-if="isOpen" class="share-backdrop" @click.self="closeDialog">
       <div class="share-popover">
@@ -240,11 +243,14 @@ async function copyLink() {
 }
 
 .share-trigger-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   padding: 0.5rem 0.9rem;
   border-radius: 8px;
   border: 1px solid var(--border-strong);
-  background: var(--card);
-  color: var(--ink);
+  background: var(--surface);
+  color: var(--text);
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
@@ -252,8 +258,8 @@ async function copyLink() {
 }
 
 .share-trigger-btn:hover {
-  border-color: var(--indigo);
-  color: var(--indigo);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .share-backdrop {
@@ -268,7 +274,7 @@ async function copyLink() {
 }
 
 .share-popover {
-  background: var(--card);
+  background: var(--surface);
   border-radius: 14px;
   padding: 1.25rem;
   width: 100%;
@@ -290,12 +296,12 @@ async function copyLink() {
   background: none;
   cursor: pointer;
   font-size: 0.9rem;
-  color: var(--ink-soft);
+  color: var(--text-muted);
   line-height: 1;
 }
 
 .status-text {
-  color: var(--ink-soft);
+  color: var(--text-muted);
   font-size: 0.85rem;
 }
 
@@ -307,7 +313,7 @@ async function copyLink() {
 
 .hint-text {
   font-size: 0.85rem;
-  color: var(--ink-soft);
+  color: var(--text-muted);
   line-height: 1.6;
   margin: 0 0 1rem;
 }
@@ -317,7 +323,7 @@ async function copyLink() {
   padding: 0.6rem 1rem;
   border-radius: 8px;
   border: none;
-  background: var(--indigo);
+  background: var(--primary);
   color: var(--on-primary);
   font-size: 0.88rem;
   font-weight: 600;
@@ -325,7 +331,7 @@ async function copyLink() {
 }
 
 .primary-btn:hover:not(:disabled) {
-  background: var(--indigo-dark);
+  background: var(--primary-strong);
 }
 
 .primary-btn:disabled {
@@ -347,15 +353,16 @@ async function copyLink() {
   border: 1px solid var(--border-strong);
   font-size: 0.82rem;
   font-family: var(--font-body);
-  color: var(--ink-soft);
-  background: var(--paper);
+  color: var(--text-muted);
+  background: var(--bg);
 }
 
 .copy-btn {
   padding: 0.55rem 0.9rem;
   border-radius: 8px;
   border: 1px solid var(--border-strong);
-  background: var(--card);
+  background: var(--surface);
+  color: var(--text);
   font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
@@ -363,8 +370,8 @@ async function copyLink() {
 }
 
 .copy-btn:hover {
-  border-color: var(--indigo);
-  color: var(--indigo);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .status-note {
@@ -387,9 +394,15 @@ async function copyLink() {
   border-radius: 8px;
   border: 1px solid var(--border-strong);
   background: none;
+  color: var(--text);
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
+}
+
+.toggle-btn:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .toggle-btn:disabled {
@@ -403,7 +416,7 @@ async function copyLink() {
   gap: 0.5rem;
   margin: 0.75rem 0 0.4rem;
   font-size: 0.88rem;
-  color: var(--ink);
+  color: var(--text);
   cursor: pointer;
 }
 
@@ -416,6 +429,6 @@ async function copyLink() {
   margin: 0 0 0.75rem;
   font-size: 0.8rem;
   line-height: 1.5;
-  color: var(--ink-soft);
+  color: var(--text-muted);
 }
 </style>

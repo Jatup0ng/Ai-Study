@@ -36,7 +36,6 @@ const canClone = computed(() =>
 )
 
 const isCloning = ref(false)
-const cloneError = ref('')
 const cloneResult = ref(null) // { type, id }
 const fileResult = ref(null) // ผลคัดลอกไฟล์ต้นทาง { copied, skipped, failed } | null
 const fileCopyError = ref('')
@@ -93,7 +92,6 @@ function goLoginThenBack() {
 async function handleClone() {
   if (!canClone.value) return
   isCloning.value = true
-  cloneError.value = ''
 
   // เลือก "สร้างวิชาใหม่" -> สร้างวิชาก่อน แล้วค่อย Clone เข้าวิชานั้น
   if (isNewSubject.value) {
@@ -271,7 +269,7 @@ onMounted(async () => {
 }
 
 .status-text {
-  color: var(--ink-soft);
+  color: var(--text-muted);
   font-size: 0.9rem;
   text-align: center;
   padding: 3rem 0;
@@ -295,7 +293,7 @@ onMounted(async () => {
 }
 
 .error-detail {
-  color: var(--ink-soft);
+  color: var(--text-muted);
   font-size: 0.85rem;
   margin: 0;
 }
@@ -312,7 +310,7 @@ onMounted(async () => {
 }
 
 .success-detail {
-  color: var(--ink);
+  color: var(--text);
   font-size: 0.9rem;
   margin: 0 0 1rem;
   line-height: 1.5;
@@ -322,7 +320,7 @@ onMounted(async () => {
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 1.5rem;
-  background: var(--card);
+  background: var(--surface);
 }
 
 .badge {
@@ -330,8 +328,8 @@ onMounted(async () => {
   font-size: 0.72rem;
   font-weight: 700;
   color: var(--warning);
-  background: var(--highlighter-soft);
-  border: 1px solid var(--highlighter);
+  background: var(--warning-bg);
+  border: 1px solid var(--warning);
   padding: 0.2rem 0.55rem;
   border-radius: 6px;
   margin-bottom: 1rem;
@@ -344,7 +342,7 @@ onMounted(async () => {
 
 .meta-text {
   font-size: 0.85rem;
-  color: var(--ink-soft);
+  color: var(--text-muted);
   margin: 0 0 1rem;
 }
 
@@ -376,7 +374,7 @@ onMounted(async () => {
   margin-top: 1rem;
   font-size: 0.8rem;
   color: var(--warning);
-  background: var(--highlighter-soft);
+  background: var(--warning-bg);
   padding: 0.5rem 0.75rem;
   border-radius: 6px;
 }
@@ -390,7 +388,7 @@ onMounted(async () => {
 .clone-hint {
   display: block;
   font-size: 0.85rem;
-  color: var(--ink);
+  color: var(--text);
   margin-bottom: 0.5rem;
 }
 
@@ -425,7 +423,7 @@ onMounted(async () => {
   padding: 0.65rem 1.1rem;
   border-radius: 8px;
   border: none;
-  background: var(--indigo);
+  background: var(--primary);
   color: var(--on-primary);
   font-size: 0.9rem;
   font-weight: 600;
@@ -434,7 +432,7 @@ onMounted(async () => {
 }
 
 .primary-btn:hover:not(:disabled) {
-  background: var(--indigo-dark);
+  background: var(--primary-strong);
 }
 
 .primary-btn:disabled {
@@ -445,7 +443,7 @@ onMounted(async () => {
 .attach-box {
   margin: 1.25rem 0 0;
   padding: 0.9rem 1.1rem;
-  background: var(--paper);
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 10px;
 }
@@ -466,6 +464,6 @@ onMounted(async () => {
 .attach-note {
   margin: 0;
   font-size: 0.8rem;
-  color: var(--ink-soft);
+  color: var(--text-muted);
 }
 </style>

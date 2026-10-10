@@ -81,19 +81,10 @@ import AppDialogHost from './component/AppDialogHost.vue'
   --shadow-lift: 0 10px 24px -14px rgba(0, 0, 0, 0.6);
 }
 
-/* ชื่อเดิมที่ view/component เก่ายังเรียกใช้อยู่ — ชี้ไป token ใหม่
-   เพื่อให้หน้าที่ยังไม่ได้รีเปลี่ยนสีตามธีมไปก่อน (ลบทิ้งได้เมื่อรีครบทุกหน้า) */
+/* token เสริมที่ผสมจากพาเลตหลัก — เปลี่ยนตามธีมอัตโนมัติ */
 :root {
-  --ink: var(--text);
-  --ink-soft: var(--text-muted);
-  --ink-faint: color-mix(in srgb, var(--text-muted) 70%, var(--bg));
-  --paper: var(--bg);
-  --card: var(--surface);
+  --text-faint: color-mix(in srgb, var(--text-muted) 70%, var(--bg));
   --border-strong: color-mix(in srgb, var(--border) 65%, var(--text-muted));
-  --indigo: var(--primary);
-  --indigo-dark: var(--primary-strong);
-  --highlighter: var(--warning);
-  --highlighter-soft: var(--warning-bg);
 }
 
 * {
@@ -116,6 +107,11 @@ button,
 input,
 textarea {
   font-family: inherit;
+}
+
+/* ปุ่มที่ไม่ได้กำหนดสีเอง ให้ใช้สีตัวอักษรตามธีม (กันตัวหนังสือดำจมในโหมดมืด) */
+button {
+  color: inherit;
 }
 
 :focus-visible {

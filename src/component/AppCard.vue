@@ -19,7 +19,7 @@ defineProps({
 .app-card {
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: var(--card);
+  background: var(--surface);
   padding: 0.9rem 1rem;
   transition: border-color 0.12s ease, box-shadow 0.12s ease;
 }
