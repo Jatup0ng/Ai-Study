@@ -17,13 +17,22 @@ const preview = ref(null) // { type, content } | { type, title, total_questions,
 
 const mySubjects = ref([])
 const isLoadingSubjects = ref(false)
+const subjectsLoaded = ref(false)
+const NEW_SUBJECT = '__new__' // ค่าพิเศษในตัวเลือก = ผู้ใช้ต้องการสร้างวิชาใหม่
 const selectedSubjectId = ref('')
+const newSubjectName = ref('')
+
+const isNewSubject = computed(() => selectedSubjectId.value === NEW_SUBJECT)
+const canClone = computed(() =>
+  isNewSubject.value ? newSubjectName.value.trim().length > 0 : !!selectedSubjectId.value
+)
 
 const isCloning = ref(false)
 const cloneError = ref('')
 const cloneResult = ref(null) // { type, id }
 const fileResult = ref(null) // ผลคัดลอกไฟล์ต้นทาง { copied, skipped, failed } | null
 const fileCopyError = ref('')
+const isCopyingFiles = ref(false) // กำลังคัดลอกไฟล์ต้นทางอยู่ — ห้ามเข้าหน้าวิชาก่อน ไม่งั้นรายการไฟล์จะยังว่าง
 
 const sourceFiles = computed(() => preview.value?.source_files || [])
 
@@ -54,11 +63,18 @@ async function loadMySubjects() {
     .select('id, name')
     .order('created_at', { ascending: false })
 
-  if (!error) {
-    mySubjects.value = data
-    if (data.length > 0) selectedSubjectId.value = data[0].id
-  }
+  if (!error) mySubjects.value = data
+  // ถ้ายังไม่มีวิชาเลย ให้เข้าโหมดสร้างวิชาใหม่ทันที
+  // มาจากช่องวางลิงก์ในหน้าวิชา (?subject=<id>) -> เลือกวิชานั้นให้ ถ้ายังอยู่ในรายการของผู้ใช้
+  const preferred = route.query.subject
+  const hasPreferred = mySubjects.value.some((s) => s.id === preferred)
+  selectedSubjectId.value = hasPreferred
+    ? preferred
+    : mySubjects.value.length > 0
+      ? mySubjects.value[0].id
+      : NEW_SUBJECT
   isLoadingSubjects.value = false
+  subjectsLoaded.value = true
 }
 
 function goLoginThenBack() {
@@ -67,9 +83,28 @@ function goLoginThenBack() {
 }
 
 async function handleClone() {
-  if (!selectedSubjectId.value) return
+  if (!canClone.value) return
   isCloning.value = true
   cloneError.value = ''
+
+  // เลือก "สร้างวิชาใหม่" -> สร้างวิชาก่อน แล้วค่อย Clone เข้าวิชานั้น
+  if (isNewSubject.value) {
+    const { data: created, error: createErr } = await supabase
+      .from('subjects')
+      .insert({ name: newSubjectName.value.trim(), user_id: user.value.id })
+      .select('id, name')
+      .single()
+
+    if (createErr) {
+      cloneError.value = 'สร้างวิชาไม่สำเร็จ: ' + createErr.message
+      isCloning.value = false
+      return
+    }
+    // เปลี่ยนตัวเลือกไปที่วิชาที่เพิ่งสร้าง — ถ้า Clone พลาดแล้วกดซ้ำ จะไม่สร้างวิชาซ้ำ
+    mySubjects.value.unshift(created)
+    selectedSubjectId.value = created.id
+    newSubjectName.value = ''
+  }
 
   const { data, error } = await supabase.rpc('import_shared_content', {
     p_token: token,
@@ -83,9 +118,11 @@ async function handleClone() {
 
     // เจ้าของเลือกแนบไฟล์ต้นทาง -> ให้เซิร์ฟเวอร์คัดลอกไฟล์ลงบัญชีผู้รับ (เนื้อหา Clone สำเร็จแล้ว ไม่ย้อนกลับถ้าขั้นนี้พลาด)
     if (preview.value?.include_source_files && sourceFiles.value.length > 0) {
+      isCopyingFiles.value = true
       const { data: fileData, error: fileErr } = await supabase.functions.invoke('copy-shared-files', {
         body: { share_token: token, new_content_id: data.id }
       })
+      isCopyingFiles.value = false
       if (fileErr) {
         fileCopyError.value = 'Clone เนื้อหาสำเร็จ แต่คัดลอกไฟล์ต้นทางไม่สำเร็จ ลองอัปโหลดไฟล์เองได้ภายหลัง'
       } else {
@@ -135,6 +172,7 @@ onMounted(async () => {
       <p class="success-detail">
         เพิ่ม{{ typeLabel }}เข้าวิชาที่เลือกเรียบร้อย เป็นสำเนาของคุณเองแล้ว แก้ไข/ลบต้นฉบับภายหลังจะไม่กระทบสำเนานี้
       </p>
+      <p v-if="isCopyingFiles" class="success-detail">⏳ กำลังคัดลอกไฟล์ต้นทาง กรุณารอสักครู่ แล้วค่อยกดไปดูในวิชา...</p>
       <p v-if="fileResult && fileResult.copied > 0" class="success-detail">
         คัดลอกไฟล์ต้นทางให้แล้ว {{ fileResult.copied }} ไฟล์
       </p>
@@ -143,7 +181,9 @@ onMounted(async () => {
         (ไฟล์ต้นทางอาจถูกลบไปแล้ว)
       </p>
       <p v-if="fileCopyError" class="success-detail">{{ fileCopyError }}</p>
-      <button class="primary-btn" @click="goToClonedSubject">ไปดูในวิชาที่เลือก</button>
+      <button class="primary-btn" :disabled="isCopyingFiles" @click="goToClonedSubject">
+        {{ isCopyingFiles ? 'กำลังคัดลอกไฟล์...' : 'ไปดูในวิชาที่เลือก' }}
+      </button>
     </div>
 
     <!-- Preview content -->
@@ -192,20 +232,24 @@ onMounted(async () => {
           <button class="primary-btn" @click="goLoginThenBack">เข้าสู่ระบบด้วย Google</button>
         </div>
 
-        <!-- login แล้ว แต่ยังไม่มีวิชา -->
-        <div v-else-if="authReady && user && !isLoadingSubjects && mySubjects.length === 0">
-          <p class="clone-hint">คุณยังไม่มีวิชาเลย ต้องสร้างวิชาก่อนถึง Clone ได้</p>
-          <router-link class="primary-btn" to="/subjects">ไปสร้างวิชา</router-link>
-        </div>
-
-        <!-- login แล้ว มีวิชาให้เลือก -->
-        <div v-else-if="authReady && user && mySubjects.length > 0">
+        <!-- login แล้ว โหลดรายวิชาเสร็จ: เลือกวิชาเดิม หรือสร้างวิชาใหม่ได้เลย -->
+        <div v-else-if="authReady && user && subjectsLoaded">
           <label class="clone-hint" for="subject-select">เลือกวิชาปลายทางของคุณ</label>
           <select id="subject-select" v-model="selectedSubjectId" class="subject-select">
             <option v-for="s in mySubjects" :key="s.id" :value="s.id">{{ s.name }}</option>
+            <option :value="NEW_SUBJECT">＋ สร้างวิชาใหม่...</option>
           </select>
-          <button class="primary-btn" :disabled="isCloning || !selectedSubjectId" @click="handleClone">
-            {{ isCloning ? 'กำลัง Clone...' : 'Clone เข้าวิชานี้' }}
+          <input
+            v-if="isNewSubject"
+            v-model="newSubjectName"
+            type="text"
+            class="subject-select"
+            placeholder="ตั้งชื่อวิชาใหม่"
+            aria-label="ชื่อวิชาใหม่"
+            @keyup.enter="handleClone"
+          />
+          <button class="primary-btn" :disabled="isCloning || !canClone" @click="handleClone">
+            {{ isCloning ? 'กำลัง Clone...' : isNewSubject ? 'สร้างวิชาและ Clone' : 'Clone เข้าวิชานี้' }}
           </button>
           <p v-if="cloneError" class="error-detail">{{ cloneError }}</p>
         </div>
