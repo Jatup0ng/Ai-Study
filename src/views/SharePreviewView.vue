@@ -5,6 +5,7 @@ import { supabase } from '../supabaseClient'
 import { useAuth } from '../composables/useAuth'
 import { toast } from '../composables/useDialog'
 import MarkdownContent from '../component/MarkdownContent.vue'
+import AppSelect from '../component/AppSelect.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -22,6 +23,12 @@ const subjectsLoaded = ref(false)
 const NEW_SUBJECT = '__new__' // ค่าพิเศษในตัวเลือก = ผู้ใช้ต้องการสร้างวิชาใหม่
 const selectedSubjectId = ref('')
 const newSubjectName = ref('')
+
+// ตัวเลือกใน Dropdown: วิชาของผู้ใช้ + ตัวเลือกพิเศษ "สร้างวิชาใหม่" ท้ายรายการ
+const subjectOptions = computed(() => [
+  ...mySubjects.value.map((s) => ({ value: s.id, label: s.name })),
+  { value: NEW_SUBJECT, label: 'สร้างวิชาใหม่...', action: true }
+])
 
 const isNewSubject = computed(() => selectedSubjectId.value === NEW_SUBJECT)
 const canClone = computed(() =>
@@ -170,7 +177,7 @@ onMounted(async () => {
 
     <!-- Cloned successfully -->
     <div v-else-if="cloneResult" class="success-box">
-      <p class="success-title">Clone สำเร็จแล้ว </p>
+      <p class="success-title">Clone สำเร็จแล้ว 🎉</p>
       <p class="success-detail">
         เพิ่ม{{ typeLabel }}เข้าวิชาที่เลือกเรียบร้อย เป็นสำเนาของคุณเองแล้ว แก้ไข/ลบต้นฉบับภายหลังจะไม่กระทบสำเนานี้
       </p>
@@ -237,10 +244,7 @@ onMounted(async () => {
         <!-- login แล้ว โหลดรายวิชาเสร็จ: เลือกวิชาเดิม หรือสร้างวิชาใหม่ได้เลย -->
         <div v-else-if="authReady && user && subjectsLoaded">
           <label class="clone-hint" for="subject-select">เลือกวิชาปลายทางของคุณ</label>
-          <select id="subject-select" v-model="selectedSubjectId" class="subject-select">
-            <option v-for="s in mySubjects" :key="s.id" :value="s.id">{{ s.name }}</option>
-            <option :value="NEW_SUBJECT">＋ สร้างวิชาใหม่...</option>
-          </select>
+          <AppSelect id="subject-select" v-model="selectedSubjectId" :options="subjectOptions" class="subject-field" />
           <input
             v-if="isNewSubject"
             v-model="newSubjectName"
@@ -390,14 +394,30 @@ onMounted(async () => {
   margin-bottom: 0.5rem;
 }
 
+.subject-field {
+  margin-bottom: 0.75rem;
+}
+
 .subject-select {
   width: 100%;
-  padding: 0.55rem 0.7rem;
-  border-radius: 8px;
-  border: 1px solid var(--border-strong);
-  font-size: 0.9rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.95rem;
   font-family: var(--font-body);
   margin-bottom: 0.75rem;
+}
+
+.subject-select::placeholder {
+  color: var(--text-muted);
+}
+
+.subject-select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 20%, transparent);
 }
 
 .primary-btn {
