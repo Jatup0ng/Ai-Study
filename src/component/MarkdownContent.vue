@@ -34,8 +34,17 @@ function normalizeMath(text) {
     .replace(/\\\(([\s\S]+?)\\\)/g, (_, m) => `$${m.trim()}$`)
 }
 
+// Gemini บางครั้งเอาคำสั่ง/โค้ด (เช่น SQL, ชื่อคอลัมน์) ไปครอบเป็น $\text{...}$ — แต่ใน \text{} ตัว _ % # &
+// เป็นตัวอักษรต้องห้ามของ KaTeX (เช่น \text{col_name} ทำให้ parse พังและโชว์เป็นข้อความสีแดง)
+// จึง escape ให้ก่อน (ตัวที่ escape ไว้แล้วจะไม่ถูกแตะ) — ตัว _ ในสูตรปกติ เช่น $x_1$ ไม่ได้อยู่ใน \text{} จึงไม่กระทบ
+function fixTextMode(text) {
+  return text.replace(/\\text\{([^{}]*)\}/g, (_, inner) =>
+    '\\text{' + inner.replace(/(?<!\\)([_%#&])/g, '\\$1') + '}'
+  )
+}
+
 const html = computed(() => {
-  const text = normalizeMath(props.source || '')
+  const text = fixTextMode(normalizeMath(props.source || ''))
   const raw = props.inline
     ? md.parseInline(text, { breaks: props.breaks })
     : md.parse(text, { breaks: props.breaks })
