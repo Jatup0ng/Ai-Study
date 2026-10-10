@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../composables/useAuth'
 
@@ -9,6 +9,30 @@ const props = defineProps({
 })
 
 const { user } = useAuth()
+const router = useRouter()
+
+// ---- รับลิงก์แชร์จากเพื่อน: วางลิงก์ -> ไปหน้า Preview โดยเลือกวิชานี้เป็นปลายทางไว้ให้ ----
+const shareLinkInput = ref('')
+const shareLinkError = ref('')
+
+// รับได้ทั้งลิงก์เต็ม (.../share/<token>) หรือวางเฉพาะ token (48 ตัวอักษร a-z A-Z 0-9 _ -)
+function extractShareToken(text) {
+  const t = text.trim()
+  const fromUrl = t.match(/\/share\/([A-Za-z0-9_-]+)/)
+  if (fromUrl) return fromUrl[1]
+  if (/^[A-Za-z0-9_-]{20,}$/.test(t)) return t
+  return null
+}
+
+function openSharedLink() {
+  shareLinkError.value = ''
+  const token = extractShareToken(shareLinkInput.value)
+  if (!token) {
+    shareLinkError.value = 'ลิงก์ไม่ถูกต้อง — วางลิงก์ที่ได้จากเพื่อน (หน้าตาแบบ .../share/xxxx)'
+    return
+  }
+  router.push({ name: 'share-preview', params: { token }, query: { subject: props.id } })
+}
 
 const subject = ref(null)
 const documents = ref([])
@@ -535,6 +559,26 @@ async function handleGenerateFlashcard() {
       <p v-if="uploadError" class="error-text">{{ uploadError }}</p>
       <p class="upload-hint">รองรับ PDF, Word (.docx), PowerPoint (.pptx) ขนาดไม่เกิน 10MB</p>
 
+      <!-- ช่องรับลิงก์แชร์จากเพื่อน -->
+      <div class="import-box">
+        <label class="import-label" for="share-link-input">🔗 รับเนื้อหาจากเพื่อน — วางลิงก์ที่ได้รับ</label>
+        <div class="import-row">
+          <input
+            id="share-link-input"
+            v-model="shareLinkInput"
+            type="text"
+            class="import-input"
+            placeholder="https://.../share/..."
+            @keyup.enter="openSharedLink"
+          />
+          <button class="import-btn" :disabled="!shareLinkInput.trim()" @click="openSharedLink">
+            ดูตัวอย่างและ Clone
+          </button>
+        </div>
+        <p v-if="shareLinkError" class="error-text">{{ shareLinkError }}</p>
+        <p v-else class="import-hint">จะเปิดหน้าตัวอย่างก่อน แล้วกด Clone เข้าวิชา "{{ subject.name }}" ได้เลย</p>
+      </div>
+
       <div class="workspace">
         <!-- ฝั่งซ้าย: แหล่งเอกสาร (Sources) -->
         <section class="sources-pane">
@@ -867,6 +911,65 @@ async function handleGenerateFlashcard() {
   color: var(--danger);
   font-size: 0.85rem;
   margin: 0.5rem 0;
+}
+
+.import-box {
+  margin: 0 0 1.25rem;
+  padding: 0.9rem 1rem;
+  background: var(--highlighter-soft);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.import-label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 0.5rem;
+}
+
+.import-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.import-input {
+  flex: 1;
+  min-width: 200px;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  font-size: 0.9rem;
+  font-family: var(--font-body);
+  background: var(--card);
+}
+
+.import-btn {
+  padding: 0.55rem 1rem;
+  border-radius: 8px;
+  border: none;
+  background: var(--indigo);
+  color: #ffffff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.import-btn:hover:not(:disabled) {
+  background: var(--indigo-dark);
+}
+
+.import-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.import-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
 }
 
 .workspace {
