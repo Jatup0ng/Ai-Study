@@ -14,15 +14,17 @@ const subject = ref(null)
 const documents = ref([])
 const summaries = ref([]) // [{ summary_id, content, created_at, file_names: [...] }]
 const quizzes = ref([]) // [{ quiz_id, title, created_at, question_count, file_names: [...] }]
+const flashcardSets = ref([]) // [{ flashcard_set_id, title, created_at, card_count, file_names: [...] }]
 
 const isLoadingSubject = ref(true)
 const isLoadingDocuments = ref(true)
 const isLoadingSummaries = ref(true)
 const isLoadingQuizzes = ref(true)
+const isLoadingFlashcardSets = ref(true)
 const errorMessage = ref('')
 
-// Studio Panel มี 2 แท็บ: สร้าง Summary กับสร้าง Quiz ใช้ selectedDocumentIds ชุดเดียวกัน
-const activeStudioTab = ref('summary') // 'summary' | 'quiz'
+// Studio Panel มี 3 แท็บ: สร้าง Summary / Quiz / Flashcard ใช้ selectedDocumentIds ชุดเดียวกัน
+const activeStudioTab = ref('summary') // 'summary' | 'quiz' | 'flashcard'
 
 const STATUS_LABEL = {
   processing: 'กำลังประมวลผล',
@@ -140,6 +142,50 @@ async function fetchQuizzes() {
   isLoadingQuizzes.value = false
 }
 
+// ดึง Flashcard Set ของวิชานี้ทั้งหมด แล้วต่อด้วยชื่อไฟล์ต้นทาง + จำนวนใบ
+// ผ่าน Junction Table (flashcard_set_documents) เหมือน Pattern ของ fetchQuizzes
+async function fetchFlashcardSets() {
+  isLoadingFlashcardSets.value = true
+
+  const { data: rows, error } = await supabase
+    .from('flashcard_sets')
+    .select('flashcard_set_id, title, created_at')
+    .eq('subject_id', props.id)
+    .order('created_at', { ascending: false })
+
+  if (error || !rows) {
+    isLoadingFlashcardSets.value = false
+    return
+  }
+
+  const setIds = rows.map((r) => r.flashcard_set_id)
+  let fileNamesBySet = {}
+  let cardCountBySet = {}
+
+  if (setIds.length > 0) {
+    const [{ data: links }, { data: cardRows }] = await Promise.all([
+      supabase.from('flashcard_set_documents').select('flashcard_set_id, documents ( file_name )').in('flashcard_set_id', setIds),
+      supabase.from('flashcards').select('flashcard_set_id').in('flashcard_set_id', setIds)
+    ])
+
+    for (const link of links || []) {
+      const list = fileNamesBySet[link.flashcard_set_id] || []
+      list.push(link.documents?.file_name)
+      fileNamesBySet[link.flashcard_set_id] = list
+    }
+    for (const c of cardRows || []) {
+      cardCountBySet[c.flashcard_set_id] = (cardCountBySet[c.flashcard_set_id] || 0) + 1
+    }
+  }
+
+  flashcardSets.value = rows.map((r) => ({
+    ...r,
+    file_names: (fileNamesBySet[r.flashcard_set_id] || []).filter(Boolean),
+    card_count: cardCountBySet[r.flashcard_set_id] || 0
+  }))
+  isLoadingFlashcardSets.value = false
+}
+
 function fileKind(fileName) {
   const ext = (fileName || '').split('.').pop()?.toLowerCase()
   if (ext === 'pdf') return 'PDF'
@@ -153,14 +199,26 @@ function formatDate(isoString) {
   return new Date(isoString).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-function snippet(content, length = 110) {
-  if (!content) return ''
-  return content.length > length ? content.slice(0, length).trim() + '…' : content
+// Summary ไม่มีคอลัมน์ title — ดึงชื่อหัวข้อจากบรรทัดแรกของเนื้อหา แล้วลบสัญลักษณ์ Markdown ออก
+// (รองรับทั้งสรุปเก่าที่ขึ้นต้นด้วย **ตัวหนา** / bullet และสรุปใหม่ที่ขึ้นต้นด้วย # หัวข้อ)
+function summaryTitle(content, maxLength = 70) {
+  if (!content) return 'สรุปเนื้อหา'
+  const lines = content.split('\n').map((l) => l.trim()).filter((l) => l && !/^[-*_]{3,}$/.test(l))
+  const heading = lines.find((l) => /^#{1,3}\s/.test(l))
+  let title = (heading || lines[0] || '')
+    .replace(/^#{1,6}\s*/, '')
+    .replace(/^[-*+>]\s+/, '')
+    .replace(/\$([^$]*)\$/g, '$1')
+    .replace(/[*_`]/g, '')
+    .replace(/^ชีทสรุป(สอบ)?\s*[:：]\s*/, '')
+    .trim()
+  if (!title) return 'สรุปเนื้อหา'
+  return title.length > maxLength ? title.slice(0, maxLength).trim() + '…' : title
 }
 
 onMounted(async () => {
   await Promise.all([fetchSubject(), fetchDocuments()])
-  await Promise.all([fetchSummaries(), fetchQuizzes()])
+  await Promise.all([fetchSummaries(), fetchQuizzes(), fetchFlashcardSets()])
 })
 
 // --- อัปโหลดเอกสาร ---
@@ -251,6 +309,64 @@ function toggleDocument(docId) {
 
 const selectedCount = computed(() => selectedDocumentIds.value.length)
 
+// --- ลบเนื้อหา (Summary / Quiz / Flashcard Set) ---
+// ลบแค่เนื้อหานั้น ไม่ลบไฟล์ต้นทาง (ไฟล์อาจใช้กับเนื้อหาอื่นอยู่ — ลบไฟล์แยกที่ปุ่มลบเอกสาร)
+// DB ตั้ง ON DELETE CASCADE ไว้แล้ว: ตารางเชื่อมไฟล์ / คำถาม+ตัวเลือก / ประวัติทำควิส / บัตร / ลิงก์แชร์ จะถูกลบตามอัตโนมัติ
+// สำเนาที่คนอื่น Clone ไปแล้วเป็นของเขาเอง (source_*_id เป็น SET NULL) ไม่กระทบ
+const CONTENT_KINDS = {
+  summary: { table: 'summaries', idCol: 'summary_id', label: 'สรุป' },
+  quiz: { table: 'quizzes', idCol: 'quiz_id', label: 'Quiz' },
+  flashcard_set: { table: 'flashcard_sets', idCol: 'flashcard_set_id', label: 'Flashcard' }
+}
+const deletingContentKey = ref('') // เช่น 'quiz:12' (กันกดซ้ำ + แสดง ... บนปุ่ม)
+const deleteContentError = ref('')
+
+async function handleDeleteContent(kind, id, displayName) {
+  const cfg = CONTENT_KINDS[kind]
+  deleteContentError.value = ''
+
+  // เช็คของที่จะหายไปพร้อมกัน เพื่อเตือนผู้ใช้ให้ตรงความจริง
+  const checks = [
+    supabase.from('shares').select('share_id', { count: 'exact', head: true }).eq(cfg.idCol, id).eq('is_active', true)
+  ]
+  if (kind === 'quiz') {
+    checks.push(supabase.from('quiz_attempts').select('attempt_id', { count: 'exact', head: true }).eq('quiz_id', id))
+  }
+  const [shareRes, attemptRes] = await Promise.all(checks)
+  const activeShares = shareRes?.count || 0
+  const attempts = attemptRes?.count || 0
+
+  let message = `ต้องการลบ${cfg.label} "${displayName}" ใช่หรือไม่? การลบนี้ไม่สามารถกู้คืนได้`
+  if (kind === 'quiz' && attempts > 0) {
+    message += `\n\n⚠️ ประวัติการทำแบบทดสอบ ${attempts} ครั้งของ Quiz นี้จะถูกลบไปด้วย`
+  }
+  if (activeShares > 0) {
+    message +=
+      `\n\n⚠️ ${cfg.label}นี้มีลิงก์แชร์ที่เปิดอยู่ หลังลบแล้วลิงก์จะใช้ไม่ได้ ` +
+      `(คนที่ Clone ไปก่อนหน้านี้ยังมีสำเนาของตัวเองอยู่ ไม่ได้รับผลกระทบ)`
+  }
+  message += `\n\nไฟล์ต้นทางจะไม่ถูกลบ`
+
+  if (!confirm(message)) return
+
+  const key = `${kind}:${id}`
+  deletingContentKey.value = key
+  try {
+    // .select() เพื่อเช็คว่าลบได้จริง (ถ้า RLS ไม่อนุญาต Supabase จะไม่ error แต่ลบ 0 แถว)
+    const { data, error } = await supabase.from(cfg.table).delete().eq(cfg.idCol, id).select(cfg.idCol)
+    if (error) throw error
+    if (!data || data.length === 0) throw new Error('ไม่พบรายการนี้ หรือไม่มีสิทธิ์ลบ')
+
+    if (kind === 'summary') summaries.value = summaries.value.filter((x) => x.summary_id !== id)
+    else if (kind === 'quiz') quizzes.value = quizzes.value.filter((x) => x.quiz_id !== id)
+    else flashcardSets.value = flashcardSets.value.filter((x) => x.flashcard_set_id !== id)
+  } catch (err) {
+    deleteContentError.value = `ลบ${cfg.label}ไม่สำเร็จ: ` + (err.message || 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ')
+  } finally {
+    deletingContentKey.value = ''
+  }
+}
+
 // --- ลบเอกสาร ---
 const deletingDocumentId = ref(null)
 const deleteError = ref('')
@@ -258,13 +374,15 @@ const deleteError = ref('')
 async function handleDeleteDocument(doc) {
   // เช็คก่อนว่าเอกสารนี้ถูกใช้สร้าง Summary/Quiz ไว้กี่รายการ
   // เพื่อเตือนผู้ใช้ก่อนลบ (Summary เสีย Chat, Quiz จะไม่มี Reference กลับไปไฟล์ต้นทาง)
-  const [{ data: summaryLinks }, { data: quizLinks }] = await Promise.all([
+  const [{ data: summaryLinks }, { data: quizLinks }, { data: flashcardLinks }] = await Promise.all([
     supabase.from('summary_documents').select('summary_id').eq('document_id', doc.document_id),
-    supabase.from('quiz_documents').select('quiz_id').eq('document_id', doc.document_id)
+    supabase.from('quiz_documents').select('quiz_id').eq('document_id', doc.document_id),
+    supabase.from('flashcard_set_documents').select('flashcard_set_id').eq('document_id', doc.document_id)
   ])
 
   const affectedSummaryCount = new Set((summaryLinks || []).map((l) => l.summary_id)).size
   const affectedQuizCount = new Set((quizLinks || []).map((l) => l.quiz_id)).size
+  const affectedFlashcardCount = new Set((flashcardLinks || []).map((l) => l.flashcard_set_id)).size
 
   let message = `ต้องการลบเอกสาร "${doc.file_name}" ใช่หรือไม่? การลบนี้ไม่สามารถกู้คืนได้`
   if (affectedSummaryCount > 0) {
@@ -275,6 +393,9 @@ async function handleDeleteDocument(doc) {
   }
   if (affectedQuizCount > 0) {
     message += `\n\n⚠️ เอกสารนี้ยังถูกใช้สร้าง Quiz ไว้แล้ว ${affectedQuizCount} ชุด (ตัว Quiz ยังใช้ทำแบบทดสอบได้ปกติ แค่จะไม่เหลือ Reference ไปยังไฟล์ต้นทางนี้)`
+  }
+  if (affectedFlashcardCount > 0) {
+    message += `\n\n⚠️ เอกสารนี้ยังถูกใช้สร้าง Flashcard ไว้แล้ว ${affectedFlashcardCount} ชุด (ตัว Flashcard ยังทบทวนได้ปกติ แค่จะไม่เหลือ Reference ไปยังไฟล์ต้นทางนี้)`
   }
 
   if (!confirm(message)) return
@@ -355,6 +476,34 @@ async function handleGenerateQuiz() {
     generateQuizError.value = err.message || 'สร้าง Quiz ไม่สำเร็จ'
   } finally {
     isGeneratingQuiz.value = false
+  }
+}
+
+// --- สร้าง Flashcard รวมจากไฟล์ที่เลือก (รองรับ 1 หรือหลายไฟล์ เหมือน Summary/Quiz) ---
+const isGeneratingFlashcard = ref(false)
+const generateFlashcardError = ref('')
+const flashcardCardCount = ref(12) // ตรงกับ Default ของ Edge Function (1-40 ใบ)
+
+async function handleGenerateFlashcard() {
+  if (selectedDocumentIds.value.length === 0) return
+
+  isGeneratingFlashcard.value = true
+  generateFlashcardError.value = ''
+
+  try {
+    const { data, error } = await supabase.functions.invoke('generate-flashcard', {
+      body: { document_ids: selectedDocumentIds.value, card_count: flashcardCardCount.value }
+    })
+
+    if (error) throw new Error(error.message || 'เรียก Edge Function ไม่สำเร็จ')
+    if (data?.error) throw new Error(data.error)
+
+    selectedDocumentIds.value = []
+    await fetchFlashcardSets()
+  } catch (err) {
+    generateFlashcardError.value = err.message || 'สร้าง Flashcard ไม่สำเร็จ'
+  } finally {
+    isGeneratingFlashcard.value = false
   }
 }
 </script>
@@ -456,6 +605,14 @@ async function handleGenerateQuiz() {
             >
               🧩 Quiz
             </button>
+            <button
+              type="button"
+              class="studio-tab"
+              :class="{ 'is-active': activeStudioTab === 'flashcard' }"
+              @click="activeStudioTab = 'flashcard'"
+            >
+              🎴 Flashcard
+            </button>
           </div>
 
           <!-- แท็บ Summary -->
@@ -476,6 +633,7 @@ async function handleGenerateQuiz() {
             </div>
 
             <h3 class="sub-title">สรุปที่มีอยู่แล้ว</h3>
+            <p v-if="deleteContentError" class="error-text">{{ deleteContentError }}</p>
             <p v-if="isLoadingSummaries" class="status-text">กำลังโหลด...</p>
             <p v-else-if="summaries.length === 0" class="status-text">ยังไม่มีสรุปในวิชานี้</p>
 
@@ -483,12 +641,26 @@ async function handleGenerateQuiz() {
               <li v-for="s in summaries" :key="s.summary_id" class="summary-card">
                 <RouterLink :to="{ name: 'summary-detail', params: { summaryId: s.summary_id } }" class="summary-link">
                   <span class="ai-badge">AI สรุปให้</span>
-                  <p class="summary-snippet">{{ snippet(s.content) }}</p>
-                  <p class="summary-meta">
-                    <template v-if="s.file_names.length">จาก {{ s.file_names.length }} ไฟล์ · </template>
-                    {{ formatDate(s.created_at) }}
-                  </p>
+                  <p class="card-title">{{ summaryTitle(s.content) }}</p>
+                  <div class="source-files" :title="s.file_names.join(', ')">
+                    <template v-if="s.file_names.length">
+                      <span v-for="n in s.file_names.slice(0, 2)" :key="n" class="file-chip">📄 {{ n }}</span>
+                      <span v-if="s.file_names.length > 2" class="file-chip file-chip-more">+{{ s.file_names.length - 2 }} ไฟล์</span>
+                    </template>
+                    <span v-else class="file-chip file-chip-missing">ไฟล์ต้นทางถูกลบแล้ว</span>
+                  </div>
+                  <p class="summary-meta">{{ formatDate(s.created_at) }}</p>
                 </RouterLink>
+                <div class="card-footer">
+                  <button
+                    type="button"
+                    class="delete-content-btn"
+                    :disabled="deletingContentKey === 'summary:' + s.summary_id"
+                    @click="handleDeleteContent('summary', s.summary_id, summaryTitle(s.content))"
+                  >
+                    {{ deletingContentKey === 'summary:' + s.summary_id ? '...' : 'ลบ' }}
+                  </button>
+                </div>
               </li>
             </ul>
           </template>
@@ -521,6 +693,7 @@ async function handleGenerateQuiz() {
             </div>
 
             <h3 class="sub-title">Quiz ที่มีอยู่แล้ว</h3>
+            <p v-if="deleteContentError" class="error-text">{{ deleteContentError }}</p>
             <p v-if="isLoadingQuizzes" class="status-text">กำลังโหลด...</p>
             <p v-else-if="quizzes.length === 0" class="status-text">ยังไม่มี Quiz ในวิชานี้</p>
 
@@ -528,12 +701,15 @@ async function handleGenerateQuiz() {
               <li v-for="q in quizzes" :key="q.quiz_id" class="summary-card quiz-card">
                 <div class="summary-link">
                   <span class="ai-badge quiz-badge">AI ออกข้อสอบให้</span>
-                  <p class="summary-snippet">{{ q.title }}</p>
-                  <p class="summary-meta">
-                    {{ q.question_count }} ข้อ
-                    <template v-if="q.file_names.length"> · จาก {{ q.file_names.length }} ไฟล์</template>
-                    · {{ formatDate(q.created_at) }}
-                  </p>
+                  <p class="card-title">{{ q.title }}</p>
+                  <div class="source-files" :title="q.file_names.join(', ')">
+                    <template v-if="q.file_names.length">
+                      <span v-for="n in q.file_names.slice(0, 2)" :key="n" class="file-chip">📄 {{ n }}</span>
+                      <span v-if="q.file_names.length > 2" class="file-chip file-chip-more">+{{ q.file_names.length - 2 }} ไฟล์</span>
+                    </template>
+                    <span v-else class="file-chip file-chip-missing">ไฟล์ต้นทางถูกลบแล้ว</span>
+                  </div>
+                  <p class="summary-meta">{{ q.question_count }} ข้อ · {{ formatDate(q.created_at) }}</p>
                 </div>
                 <div class="quiz-actions">
                   <RouterLink :to="{ name: 'quiz-practice', params: { quizId: q.quiz_id } }" class="practice-link">
@@ -542,6 +718,77 @@ async function handleGenerateQuiz() {
                   <RouterLink :to="{ name: 'quiz-detail', params: { quizId: q.quiz_id } }" class="review-link">
                     ตรวจสอบ/แก้ไข
                   </RouterLink>
+                  <button
+                    type="button"
+                    class="delete-content-btn"
+                    :disabled="deletingContentKey === 'quiz:' + q.quiz_id"
+                    @click="handleDeleteContent('quiz', q.quiz_id, q.title)"
+                  >
+                    {{ deletingContentKey === 'quiz:' + q.quiz_id ? '...' : 'ลบ' }}
+                  </button>
+                </div>
+              </li>
+            </ul>
+          </template>
+
+          <!-- แท็บ Flashcard -->
+          <template v-else-if="activeStudioTab === 'flashcard'">
+            <div class="generate-box">
+              <p class="generate-status">
+                <template v-if="selectedCount === 0">เลือกเอกสารทางซ้ายเพื่อเริ่มสร้าง Flashcard</template>
+                <template v-else>เลือกไว้ {{ selectedCount }} ไฟล์</template>
+              </p>
+              <label class="question-count-label">
+                จำนวนใบ
+                <input
+                  type="number"
+                  v-model.number="flashcardCardCount"
+                  min="1"
+                  max="40"
+                  class="question-count-input"
+                />
+              </label>
+              <button
+                class="generate-btn"
+                :disabled="selectedCount === 0 || isGeneratingFlashcard"
+                @click="handleGenerateFlashcard"
+              >
+                {{ isGeneratingFlashcard ? 'AI กำลังทำ Flashcard... (อาจใช้เวลาสักครู่)' : '🎴 สร้าง Flashcard จากไฟล์ที่เลือก' }}
+              </button>
+              <p v-if="generateFlashcardError" class="error-text">{{ generateFlashcardError }}</p>
+            </div>
+
+            <h3 class="sub-title">Flashcard ที่มีอยู่แล้ว</h3>
+            <p v-if="deleteContentError" class="error-text">{{ deleteContentError }}</p>
+            <p v-if="isLoadingFlashcardSets" class="status-text">กำลังโหลด...</p>
+            <p v-else-if="flashcardSets.length === 0" class="status-text">ยังไม่มี Flashcard ในวิชานี้</p>
+
+            <ul v-else class="summary-list">
+              <li v-for="f in flashcardSets" :key="f.flashcard_set_id" class="summary-card">
+                <RouterLink
+                  :to="{ name: 'flashcard-set-detail', params: { flashcardSetId: f.flashcard_set_id } }"
+                  class="summary-link"
+                >
+                  <span class="ai-badge flashcard-badge">AI ทำ Flashcard ให้</span>
+                  <p class="card-title">{{ f.title }}</p>
+                  <div class="source-files" :title="f.file_names.join(', ')">
+                    <template v-if="f.file_names.length">
+                      <span v-for="n in f.file_names.slice(0, 2)" :key="n" class="file-chip">📄 {{ n }}</span>
+                      <span v-if="f.file_names.length > 2" class="file-chip file-chip-more">+{{ f.file_names.length - 2 }} ไฟล์</span>
+                    </template>
+                    <span v-else class="file-chip file-chip-missing">ไฟล์ต้นทางถูกลบแล้ว</span>
+                  </div>
+                  <p class="summary-meta">{{ f.card_count }} ใบ · {{ formatDate(f.created_at) }}</p>
+                </RouterLink>
+                <div class="card-footer">
+                  <button
+                    type="button"
+                    class="delete-content-btn"
+                    :disabled="deletingContentKey === 'flashcard_set:' + f.flashcard_set_id"
+                    @click="handleDeleteContent('flashcard_set', f.flashcard_set_id, f.title)"
+                  >
+                    {{ deletingContentKey === 'flashcard_set:' + f.flashcard_set_id ? '...' : 'ลบ' }}
+                  </button>
                 </div>
               </li>
             </ul>
@@ -812,6 +1059,12 @@ async function handleGenerateQuiz() {
   border-color: #b9d7f2;
 }
 
+.flashcard-badge {
+  color: #7a3e9d;
+  background: #f3e8fb;
+  border-color: #ddb9f2;
+}
+
 .generate-box {
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -893,6 +1146,50 @@ async function handleGenerateQuiz() {
   color: var(--ink);
 }
 
+.card-title {
+  font-family: var(--font-heading);
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.45;
+  margin: 0 0 0.5rem;
+  color: var(--ink);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.source-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0 0 0.5rem;
+}
+
+.file-chip {
+  max-width: 100%;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.1rem 0.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-chip-more {
+  color: var(--indigo);
+  font-weight: 600;
+}
+
+.file-chip-missing {
+  font-style: italic;
+  color: var(--ink-faint);
+}
+
 .summary-meta {
   font-size: 0.75rem;
   color: var(--ink-faint);
@@ -933,5 +1230,31 @@ async function handleGenerateQuiz() {
 
 .review-link:hover {
   border-color: var(--ink-faint);
+}
+
+.card-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 1rem 0.8rem;
+}
+
+.delete-content-btn {
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid var(--border-strong);
+  color: var(--danger);
+  border-radius: 8px;
+  padding: 0.45rem 0.8rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.delete-content-btn:hover:not(:disabled) {
+  background: var(--danger-bg);
+}
+
+.delete-content-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>

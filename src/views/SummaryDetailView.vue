@@ -2,6 +2,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { supabase } from '../supabaseClient'
+import ShareButton from '../component/ShareButton.vue'
+import MarkdownContent from '../component/MarkdownContent.vue'
 
 const props = defineProps({
   summaryId: { type: String, required: true }
@@ -23,7 +25,7 @@ const isSaving = ref(false)
 const saveError = ref('')
 
 // --- Studio Panel: Chat / Quiz / Flashcard ---
-const activeTab = ref('chat') // 'chat' | 'quiz' | 'flashcard' — Quiz/Flashcard ยังไม่มี Feature จริง (รอ Sprint 2 ข้อ 14-17)
+const activeTab = ref('chat') // 'chat' | 'quiz' | 'flashcard'
 
 // Chat ไม่เก็บถาวรใน Database (ตามที่ยืนยันไว้) — หายเมื่อ Refresh หน้า
 const chatMessages = ref([]) // [{ role: 'user' | 'model', text: string }]
@@ -77,6 +79,72 @@ async function copyMessageText(text) {
   } catch {
     // Clipboard API ใช้ไม่ได้ (เช่น ไม่ใช่ HTTPS) — เงียบไว้ ไม่ใช่ Error ร้ายแรง
   }
+}
+
+// --- Quiz Tab: โชว์ Quiz ทั้งหมด "ของวิชานี้" — Pattern เดียวกับ Flashcard Tab ---
+// หมายเหตุ: Schema ไม่มีความสัมพันธ์ตรงระหว่าง Summary กับ Quiz (คนละก้อนที่ Generate
+// แยกกันจากเอกสารต้นทาง) จึงโชว์ตาม subject_id เดียวกันแทน ไม่ใช่ "Quiz ของ Summary นี้โดยเฉพาะ"
+const quizzes = ref([])
+const isLoadingQuizzes = ref(false)
+const quizzesLoaded = ref(false)
+const quizzesError = ref('')
+
+async function loadQuizzesIfNeeded() {
+  if (quizzesLoaded.value || !summary.value?.subject_id) return
+
+  isLoadingQuizzes.value = true
+  quizzesError.value = ''
+
+  const { data, error } = await supabase
+    .from('quizzes')
+    .select('quiz_id, title, created_at')
+    .eq('subject_id', summary.value.subject_id)
+    .order('created_at', { ascending: false })
+
+  if (error) quizzesError.value = 'โหลด Quiz ไม่สำเร็จ: ' + error.message
+  else quizzes.value = data || []
+
+  quizzesLoaded.value = true
+  isLoadingQuizzes.value = false
+}
+
+// --- Flashcard Tab: โชว์ Flashcard Set ทั้งหมด "ของวิชานี้" ---
+// หมายเหตุ: Schema ไม่มีความสัมพันธ์ตรงระหว่าง Summary กับ Flashcard Set
+// (คนละก้อนที่ Generate แยกกันจากเอกสารต้นทาง) จึงโชว์ตาม subject_id
+// เดียวกันแทน ไม่ใช่ "Flashcard ของ Summary นี้โดยเฉพาะ"
+const flashcardSets = ref([])
+const isLoadingFlashcards = ref(false)
+const flashcardsLoaded = ref(false)
+const flashcardsError = ref('')
+
+async function loadFlashcardsIfNeeded() {
+  if (flashcardsLoaded.value || !summary.value?.subject_id) return
+
+  isLoadingFlashcards.value = true
+  flashcardsError.value = ''
+
+  const { data, error } = await supabase
+    .from('flashcard_sets')
+    .select('flashcard_set_id, title, created_at')
+    .eq('subject_id', summary.value.subject_id)
+    .order('created_at', { ascending: false })
+
+  if (error) flashcardsError.value = 'โหลด Flashcard ไม่สำเร็จ: ' + error.message
+  else flashcardSets.value = data || []
+
+  flashcardsLoaded.value = true
+  isLoadingFlashcards.value = false
+}
+
+function selectTab(tab) {
+  activeTab.value = tab
+  if (tab === 'quiz') loadQuizzesIfNeeded()
+  if (tab === 'flashcard') loadFlashcardsIfNeeded()
+}
+
+function formatDateShort(isoString) {
+  if (!isoString) return ''
+  return new Date(isoString).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 async function fetchSummary() {
@@ -187,7 +255,10 @@ onMounted(fetchSummary)
             </p>
             <p class="timestamp-label">แก้ไขล่าสุด {{ formatDateTime(summary.updated_at) }}</p>
           </div>
-          <button v-if="!isEditing" class="edit-btn" @click="startEdit">แก้ไข</button>
+          <div class="header-actions">
+            <ShareButton content-type="summary" :content-id="summaryId" />
+            <button v-if="!isEditing" class="edit-btn" @click="startEdit">แก้ไข</button>
+          </div>
         </header>
 
         <p v-if="saveError" class="error-text">{{ saveError }}</p>
@@ -202,7 +273,7 @@ onMounted(fetchSummary)
           </div>
         </template>
 
-        <div v-else class="summary-content">{{ summary.content }}</div>
+        <MarkdownContent v-else class="summary-content" :source="summary.content" />
       </div>
 
       <!-- ฝั่งขวา: Studio Panel (Chat / Quiz / Flashcard) -->
@@ -215,11 +286,18 @@ onMounted(fetchSummary)
           >
             แชท
           </button>
-          <button class="studio-tab disabled" disabled title="เร็วๆ นี้">
-            Quiz <span class="soon-label">เร็วๆ นี้</span>
-          </button>
-          <button class="studio-tab disabled" disabled title="เร็วๆ นี้">
-            Flashcard <span class="soon-label">เร็วๆ นี้</span>
+          <button
+            class="studio-tab"
+            :class="{ active: activeTab === 'quiz' }"
+            @click="selectTab('quiz')"
+          >
+            Quiz
+          </button>          <button
+            class="studio-tab"
+            :class="{ active: activeTab === 'flashcard' }"
+            @click="selectTab('flashcard')"
+          >
+            Flashcard
           </button>
         </div>
 
@@ -247,7 +325,8 @@ onMounted(fetchSummary)
               class="chat-bubble"
               :class="msg.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-model'"
             >
-              <div class="chat-bubble-text">{{ msg.text }}</div>
+              <MarkdownContent v-if="msg.role === 'model'" class="chat-bubble-text" :source="msg.text" breaks />
+              <div v-else class="chat-bubble-text">{{ msg.text }}</div>
               <button
                 v-if="msg.role === 'model'"
                 class="copy-btn"
@@ -275,6 +354,51 @@ onMounted(fetchSummary)
               ส่ง
             </button>
           </div>
+        </div>
+
+        <div v-else-if="activeTab === 'quiz'" class="flashcard-tab">
+          <p class="chat-hint">
+            Quiz ทั้งหมดในวิชานี้ (ไม่จำกัดเฉพาะที่มาจากไฟล์เดียวกับ Summary นี้)
+          </p>
+
+          <p v-if="isLoadingQuizzes" class="status-text">กำลังโหลด...</p>
+          <p v-if="quizzesError" class="error-text">{{ quizzesError }}</p>
+          <p v-if="quizzesLoaded && !isLoadingQuizzes && quizzes.length === 0" class="chat-empty">
+            ยังไม่มี Quiz ในวิชานี้ — ไปสร้างได้จากหน้าวิชา
+          </p>
+
+          <ul v-if="quizzes.length > 0" class="flashcard-mini-list">
+            <li v-for="q in quizzes" :key="q.quiz_id" class="quiz-mini-item">
+              <RouterLink :to="{ name: 'quiz-practice', params: { quizId: q.quiz_id } }" class="quiz-mini-main">
+                <span class="flashcard-mini-title">{{ q.title }}</span>
+                <span class="flashcard-mini-date">{{ formatDateShort(q.created_at) }}</span>
+              </RouterLink>
+              <RouterLink :to="{ name: 'quiz-detail', params: { quizId: q.quiz_id } }" class="quiz-mini-review">
+                ตรวจสอบ/แก้ไข
+              </RouterLink>
+            </li>
+          </ul>
+        </div>
+
+        <div v-else-if="activeTab === 'flashcard'" class="flashcard-tab">
+          <p class="chat-hint">
+            Flashcard ทั้งหมดในวิชานี้ (ไม่จำกัดเฉพาะที่มาจากไฟล์เดียวกับ Summary นี้)
+          </p>
+
+          <p v-if="isLoadingFlashcards" class="status-text">กำลังโหลด...</p>
+          <p v-if="flashcardsError" class="error-text">{{ flashcardsError }}</p>
+          <p v-if="flashcardsLoaded && !isLoadingFlashcards && flashcardSets.length === 0" class="chat-empty">
+            ยังไม่มี Flashcard ในวิชานี้ — ไปสร้างได้จากหน้าวิชา
+          </p>
+
+          <ul v-if="flashcardSets.length > 0" class="flashcard-mini-list">
+            <li v-for="f in flashcardSets" :key="f.flashcard_set_id">
+              <RouterLink :to="{ name: 'flashcard-set-detail', params: { flashcardSetId: f.flashcard_set_id } }">
+                <span class="flashcard-mini-title">{{ f.title }}</span>
+                <span class="flashcard-mini-date">{{ formatDateShort(f.created_at) }}</span>
+              </RouterLink>
+            </li>
+          </ul>
         </div>
       </aside>
     </div>
@@ -319,6 +443,13 @@ onMounted(fetchSummary)
   justify-content: space-between;
   gap: 1rem;
   margin-bottom: 1.5rem;
+}
+
+.header-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  flex-shrink: 0;
 }
 
 .ai-badge {
@@ -380,7 +511,6 @@ onMounted(fetchSummary)
   border-radius: 12px;
   font-size: 0.95rem;
   line-height: 1.85;
-  white-space: pre-wrap;
 }
 
 .edit-textarea {
@@ -553,10 +683,10 @@ onMounted(fetchSummary)
   border-radius: 10px;
   font-size: 0.85rem;
   line-height: 1.6;
-  white-space: pre-wrap;
 }
 
 .chat-bubble-user {
+  white-space: pre-wrap;
   align-self: flex-end;
   background: var(--indigo);
   color: #ffffff;
@@ -624,5 +754,82 @@ onMounted(fetchSummary)
 .send-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* --- Flashcard Tab --- */
+.flashcard-mini-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.flashcard-mini-list a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--ink);
+}
+
+.flashcard-mini-list a:hover {
+  border-color: var(--indigo);
+}
+
+.flashcard-mini-title {
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flashcard-mini-date {
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.quiz-mini-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.quiz-mini-item .quiz-mini-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  text-decoration: none;
+  color: var(--ink);
+  min-width: 0;
+}
+
+.quiz-mini-item:hover {
+  border-color: var(--indigo);
+}
+
+.quiz-mini-review {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--indigo);
+  text-decoration: none;
+  padding: 0.4rem 0.6rem;
+  white-space: nowrap;
+}
+
+.quiz-mini-review:hover {
+  text-decoration: underline;
 }
 </style>
