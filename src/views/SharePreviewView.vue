@@ -22,6 +22,10 @@ const selectedSubjectId = ref('')
 const isCloning = ref(false)
 const cloneError = ref('')
 const cloneResult = ref(null) // { type, id }
+const fileResult = ref(null) // ผลคัดลอกไฟล์ต้นทาง { copied, skipped, failed } | null
+const fileCopyError = ref('')
+
+const sourceFiles = computed(() => preview.value?.source_files || [])
 
 const typeLabel = computed(() => {
   if (!preview.value) return ''
@@ -76,6 +80,18 @@ async function handleClone() {
     cloneError.value = error.message || 'Clone ไม่สำเร็จ'
   } else {
     cloneResult.value = data
+
+    // เจ้าของเลือกแนบไฟล์ต้นทาง -> ให้เซิร์ฟเวอร์คัดลอกไฟล์ลงบัญชีผู้รับ (เนื้อหา Clone สำเร็จแล้ว ไม่ย้อนกลับถ้าขั้นนี้พลาด)
+    if (preview.value?.include_source_files && sourceFiles.value.length > 0) {
+      const { data: fileData, error: fileErr } = await supabase.functions.invoke('copy-shared-files', {
+        body: { share_token: token, new_content_id: data.id }
+      })
+      if (fileErr) {
+        fileCopyError.value = 'Clone เนื้อหาสำเร็จ แต่คัดลอกไฟล์ต้นทางไม่สำเร็จ ลองอัปโหลดไฟล์เองได้ภายหลัง'
+      } else {
+        fileResult.value = fileData
+      }
+    }
   }
   isCloning.value = false
 }
@@ -119,6 +135,14 @@ onMounted(async () => {
       <p class="success-detail">
         เพิ่ม{{ typeLabel }}เข้าวิชาที่เลือกเรียบร้อย เป็นสำเนาของคุณเองแล้ว แก้ไข/ลบต้นฉบับภายหลังจะไม่กระทบสำเนานี้
       </p>
+      <p v-if="fileResult && fileResult.copied > 0" class="success-detail">
+        คัดลอกไฟล์ต้นทางให้แล้ว {{ fileResult.copied }} ไฟล์
+      </p>
+      <p v-if="fileResult && (fileResult.skipped.length || fileResult.failed.length)" class="success-detail">
+        คัดลอกไม่ได้: {{ [...fileResult.skipped, ...fileResult.failed].join(', ') }}
+        (ไฟล์ต้นทางอาจถูกลบไปแล้ว)
+      </p>
+      <p v-if="fileCopyError" class="success-detail">{{ fileCopyError }}</p>
       <button class="primary-btn" @click="goToClonedSubject">ไปดูในวิชาที่เลือก</button>
     </div>
 
@@ -134,7 +158,7 @@ onMounted(async () => {
         <h1 class="content-title">{{ preview.title }}</h1>
         <p class="meta-text">ทั้งหมด {{ preview.total_questions }} ข้อ — แสดงตัวอย่าง {{ preview.preview_questions.length }} ข้อแรก</p>
         <ol class="preview-list">
-          <li v-for="(q, i) in preview.preview_questions" :key="i">{{ q }}</li>
+          <li v-for="(q, i) in preview.preview_questions" :key="i"><MarkdownContent inline :source="q" /></li>
         </ol>
         <p class="lock-note">🔒 ตัวเลือกคำตอบและเฉลยจะเปิดให้ดูหลัง Clone เข้าบัญชีของคุณเท่านั้น</p>
       </div>
@@ -145,10 +169,19 @@ onMounted(async () => {
         <p class="meta-text">ทั้งหมด {{ preview.total_cards }} ใบ — แสดงตัวอย่าง {{ preview.preview_cards.length }} ใบแรก</p>
         <div class="flashcard-grid">
           <div v-for="(card, i) in preview.preview_cards" :key="i" class="flashcard-face">
-            {{ card }}
+            <MarkdownContent inline :source="card" />
           </div>
         </div>
         <p class="lock-note">🔒 พลิกดูคำตอบได้หลัง Clone เข้าบัญชีของคุณเท่านั้น</p>
+      </div>
+
+      <!-- ไฟล์ต้นทางที่เจ้าของแนบมา (แสดงเฉพาะชื่อ จะได้ไฟล์หลัง Clone) -->
+      <div v-if="sourceFiles.length > 0" class="attach-box">
+        <p class="attach-title">📎 มีไฟล์ต้นทางแนบมาด้วย {{ sourceFiles.length }} ไฟล์</p>
+        <ul class="attach-list">
+          <li v-for="(f, i) in sourceFiles" :key="i">{{ f }}</li>
+        </ul>
+        <p class="attach-note">เมื่อกด Clone ไฟล์เหล่านี้จะถูกคัดลอกเข้าวิชาของคุณเป็นสำเนาของคุณเอง</p>
       </div>
 
       <!-- Clone action area -->
@@ -342,5 +375,32 @@ onMounted(async () => {
 .primary-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.attach-box {
+  margin: 1.25rem 0 0;
+  padding: 0.9rem 1.1rem;
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.attach-title {
+  margin: 0 0 0.4rem;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.attach-list {
+  margin: 0 0 0.5rem;
+  padding-left: 1.2rem;
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+
+.attach-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
 }
 </style>

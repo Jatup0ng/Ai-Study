@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { supabase } from '../supabaseClient'
 import ShareButton from '../component/ShareButton.vue'
+import MarkdownContent from '../component/MarkdownContent.vue'
 
 const props = defineProps({
   flashcardSetId: { type: String, required: true }
@@ -117,11 +118,11 @@ onMounted(fetchFlashcardSet)
           <div class="flip-card-inner">
             <div class="flip-card-face flip-card-front">
               <span class="face-label">คำถาม</span>
-              <p class="face-text">{{ c.question }}</p>
+              <p class="face-text"><MarkdownContent inline :source="c.question" /></p>
             </div>
             <div class="flip-card-face flip-card-back">
               <span class="face-label">คำตอบ</span>
-              <p class="face-text">{{ c.answer }}</p>
+              <p class="face-text"><MarkdownContent inline :source="c.answer" /></p>
             </div>
           </div>
         </button>

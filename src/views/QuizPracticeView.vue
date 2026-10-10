@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../composables/useAuth'
+import MarkdownContent from '../component/MarkdownContent.vue'
 
 const props = defineProps({
   quizId: { type: String, required: true }
@@ -194,7 +195,7 @@ onMounted(fetchQuiz)
 
       <ol class="question-list">
         <li v-for="(q, idx) in questions" :key="q.question_id" class="question-block">
-          <p class="question-text">{{ idx + 1 }}. {{ q.question_text }}</p>
+          <p class="question-text">{{ idx + 1 }}. <MarkdownContent inline :source="q.question_text" /></p>
 
           <ul class="choice-list">
             <li v-for="c in q.choices" :key="c.choice_id">
@@ -206,13 +207,13 @@ onMounted(fetchQuiz)
                 @click="selectAnswer(q.question_id, c.choice_id)"
               >
                 <span class="choice-radio" :class="{ checked: isSelected(q.question_id, c.choice_id) }"></span>
-                {{ c.choice_text }}
+                <MarkdownContent inline :source="c.choice_text" />
                 <span v-if="result && c.is_correct" class="correct-badge">✓ คำตอบที่ถูก</span>
               </button>
             </li>
           </ul>
 
-          <p v-if="result && q.explanation" class="explanation-text">{{ q.explanation }}</p>
+          <p v-if="result && q.explanation" class="explanation-text"><MarkdownContent inline :source="q.explanation" /></p>
         </li>
       </ol>
 

@@ -10,7 +10,9 @@ import 'katex/dist/katex.min.css'
 const props = defineProps({
   source: { type: String, default: '' },
   // true = ขึ้นบรรทัดใหม่ตามที่พิมพ์ (เหมาะกับแชท) / false = ตามกฎ Markdown ปกติ (เหมาะกับสรุป)
-  breaks: { type: Boolean, default: false }
+  breaks: { type: Boolean, default: false },
+  // true = แสดงแบบ inline (<span>, ไม่มี <p>/<h1>) สำหรับข้อความสั้นในควิส/แฟลชการ์ด — ไม่ทำให้เลย์เอาต์เดิมพัง
+  inline: { type: Boolean, default: false }
 })
 
 const md = new Marked({ gfm: true })
@@ -33,13 +35,17 @@ function normalizeMath(text) {
 }
 
 const html = computed(() => {
-  const raw = md.parse(normalizeMath(props.source || ''), { breaks: props.breaks })
+  const text = normalizeMath(props.source || '')
+  const raw = props.inline
+    ? md.parseInline(text, { breaks: props.breaks })
+    : md.parse(text, { breaks: props.breaks })
   return DOMPurify.sanitize(raw, { USE_PROFILES: { html: true, svg: true, mathMl: true } })
 })
 </script>
 
 <template>
-  <div class="md" v-html="html"></div>
+  <span v-if="inline" class="md md-inline" v-html="html"></span>
+  <div v-else class="md" v-html="html"></div>
 </template>
 
 <style scoped>
@@ -75,6 +81,8 @@ const html = computed(() => {
 .md :deep(h4) { font-size: 0.95rem; margin: 1rem 0 0.3rem; color: var(--ink-soft); }
 
 .md :deep(p) { margin: 0.6em 0; }
+.md-inline { line-height: inherit; }
+.md-inline :deep(.katex-display) { margin: 0.5rem 0; padding: 0.4rem 0.6rem; }
 
 /* ตัวหนา = คำสำคัญ ไฮไลต์เหลืองแบบปากกาเน้นข้อความ */
 .md :deep(strong) {

@@ -16,12 +16,22 @@ const columnMap = {
 }
 const column = columnMap[props.contentType]
 
+// ตารางเชื่อมระหว่างเนื้อหากับไฟล์ต้นทาง (ใช้นับจำนวนไฟล์ที่แนบไปได้)
+const junctionMap = {
+  summary: 'summary_documents',
+  quiz: 'quiz_documents',
+  flashcard_set: 'flashcard_set_documents'
+}
+const junctionTable = junctionMap[props.contentType]
+
 const isOpen = ref(false)
 const isLoading = ref(false)
 const isSaving = ref(false)
 const errorMsg = ref('')
 const shareRow = ref(null) // { share_id, share_token, is_active } | null
 const justCopied = ref(false)
+const includeFiles = ref(false) // ค่าที่ติ๊กไว้ตอนสร้างลิงก์ใหม่
+const fileCount = ref(null) // จำนวนไฟล์ต้นทางของเนื้อหานี้ (null = ยังไม่รู้)
 
 const shareUrl = computed(() =>
   shareRow.value ? `${window.location.origin}/share/${shareRow.value.share_token}` : ''
@@ -34,7 +44,7 @@ async function loadShare() {
 
   const { data, error } = await supabase
     .from('shares')
-    .select('share_id, share_token, is_active')
+    .select('share_id, share_token, is_active, include_source_files')
     .eq(column, props.contentId)
     .order('created_at', { ascending: false })
     .limit(1)
@@ -46,10 +56,19 @@ async function loadShare() {
   isLoading.value = false
 }
 
+async function loadFileCount() {
+  const { count, error } = await supabase
+    .from(junctionTable)
+    .select('document_id', { count: 'exact', head: true })
+    .eq(column, props.contentId)
+  fileCount.value = error ? null : count
+}
+
 async function openDialog() {
   isOpen.value = true
   justCopied.value = false
   if (!shareRow.value) await loadShare()
+  await loadFileCount()
 }
 
 function closeDialog() {
@@ -69,8 +88,12 @@ async function createLink() {
 
   const { data, error } = await supabase
     .from('shares')
-    .insert({ owner_id: userData.user.id, [column]: props.contentId })
-    .select('share_id, share_token, is_active')
+    .insert({
+      owner_id: userData.user.id,
+      [column]: props.contentId,
+      include_source_files: includeFiles.value && fileCount.value !== 0
+    })
+    .select('share_id, share_token, is_active, include_source_files')
     .single()
 
   if (error) errorMsg.value = 'สร้างลิงก์แชร์ไม่สำเร็จ: ' + error.message
@@ -89,10 +112,29 @@ async function toggleActive() {
     .from('shares')
     .update({ is_active: !shareRow.value.is_active })
     .eq('share_id', shareRow.value.share_id)
-    .select('share_id, share_token, is_active')
+    .select('share_id, share_token, is_active, include_source_files')
     .single()
 
   if (error) errorMsg.value = 'อัปเดตสถานะไม่สำเร็จ: ' + error.message
+  else shareRow.value = data
+
+  isSaving.value = false
+}
+
+// เปิด/ปิด "แนบไฟล์ต้นทาง" ของลิงก์ที่สร้างไว้แล้ว (มีผลกับคนที่ Clone หลังจากนี้เท่านั้น)
+async function toggleIncludeFiles() {
+  if (!shareRow.value) return
+  isSaving.value = true
+  errorMsg.value = ''
+
+  const { data, error } = await supabase
+    .from('shares')
+    .update({ include_source_files: !shareRow.value.include_source_files })
+    .eq('share_id', shareRow.value.share_id)
+    .select('share_id, share_token, is_active, include_source_files')
+    .single()
+
+  if (error) errorMsg.value = 'อัปเดตการแนบไฟล์ไม่สำเร็จ: ' + error.message
   else shareRow.value = data
 
   isSaving.value = false
@@ -130,6 +172,18 @@ async function copyLink() {
               คนที่ได้ลิงก์นี้จะเห็นตัวอย่างก่อน แล้วเลือก Clone เป็นสำเนาของตัวเองได้
               (ไม่ใช่การแชร์สิทธิ์แก้ไขต้นฉบับ)
             </p>
+            <label class="attach-option" :class="{ 'attach-disabled': fileCount === 0 }">
+              <input type="checkbox" v-model="includeFiles" :disabled="fileCount === 0" />
+              <span>
+                แนบไฟล์ต้นทางไปด้วย
+                <template v-if="fileCount !== null">({{ fileCount }} ไฟล์)</template>
+              </span>
+            </label>
+            <p v-if="fileCount === 0" class="attach-warning">เนื้อหานี้ไม่มีไฟล์ต้นทางให้แนบ</p>
+            <p v-else-if="includeFiles" class="attach-warning">
+              ผู้ที่ Clone จะได้รับสำเนาไฟล์ต้นฉบับของคุณลงบัญชีตัวเอง (ดาวน์โหลดและใช้ต่อได้)
+              โปรดแนบเฉพาะไฟล์ที่คุณมีสิทธิ์แจกจ่ายได้
+            </p>
             <button class="primary-btn" :disabled="isSaving" @click="createLink">
               {{ isSaving ? 'กำลังสร้าง...' : 'สร้างลิงก์แชร์' }}
             </button>
@@ -152,6 +206,22 @@ async function copyLink() {
 
             <p class="status-note" :class="shareRow.is_active ? 'status-active' : 'status-inactive'">
               {{ shareRow.is_active ? '● ลิงก์เปิดใช้งานอยู่' : '● ลิงก์ถูกปิดใช้งานอยู่ (คนอื่นเปิดดูไม่ได้)' }}
+            </p>
+
+            <label class="attach-option" :class="{ 'attach-disabled': fileCount === 0 }">
+              <input
+                type="checkbox"
+                :checked="shareRow.include_source_files"
+                :disabled="isSaving || fileCount === 0"
+                @change="toggleIncludeFiles"
+              />
+              <span>
+                แนบไฟล์ต้นทางไปด้วย
+                <template v-if="fileCount !== null">({{ fileCount }} ไฟล์)</template>
+              </span>
+            </label>
+            <p v-if="shareRow.include_source_files" class="attach-warning">
+              ผู้ที่ Clone หลังจากนี้จะได้รับสำเนาไฟล์ต้นฉบับ (คนที่ Clone ไปแล้วไม่ได้รับย้อนหลัง)
             </p>
 
             <button class="toggle-btn" :disabled="isSaving" @click="toggleActive">
@@ -325,5 +395,27 @@ async function copyLink() {
 .toggle-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.attach-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0.4rem;
+  font-size: 0.88rem;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.attach-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.attach-warning {
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
 }
 </style>

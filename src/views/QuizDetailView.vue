@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { supabase } from '../supabaseClient'
 import ShareButton from '../component/ShareButton.vue'
+import MarkdownContent from '../component/MarkdownContent.vue'
 
 const props = defineProps({
   quizId: { type: String, required: true }
@@ -299,7 +300,7 @@ onMounted(fetchQuiz)
               </div>
             </div>
 
-            <p class="question-text">{{ q.question_text }}</p>
+            <p class="question-text"><MarkdownContent inline :source="q.question_text" /></p>
 
             <ul class="choice-list">
               <li
@@ -309,12 +310,12 @@ onMounted(fetchQuiz)
                 :class="{ 'is-correct': c.is_correct }"
               >
                 <span class="choice-label">{{ choiceLabels[ci] }}</span>
-                <span>{{ c.choice_text }}</span>
+                <span><MarkdownContent inline :source="c.choice_text" /></span>
                 <span v-if="c.is_correct" class="correct-tag">✓ คำตอบที่ถูก</span>
               </li>
             </ul>
 
-            <p v-if="q.explanation" class="explanation-text">💡 {{ q.explanation }}</p>
+            <p v-if="q.explanation" class="explanation-text">💡 <MarkdownContent inline :source="q.explanation" /></p>
           </template>
         </li>
       </ul>
