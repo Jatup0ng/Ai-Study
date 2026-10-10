@@ -57,6 +57,7 @@ const firstName = computed(() => {
 
 const greeting = computed(() => {
   const h = new Date().getHours()
+  if (h < 6) return 'สวัสดีตอนดึก'
   if (h < 12) return 'สวัสดีตอนเช้า'
   if (h < 17) return 'สวัสดีตอนบ่าย'
   return 'สวัสดีตอนเย็น'

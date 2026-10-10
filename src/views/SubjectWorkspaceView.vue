@@ -690,7 +690,7 @@ const studioItems = computed(() => {
       meta: `${q.question_count} ข้อ · ${formatDate(q.created_at)}`,
       open: null,
       actions: [
-        { label: 'ทำข้อสอบ', primary: true, to: { name: 'quiz-practice', params: { quizId: q.quiz_id } } },
+        { label: '✏️ ทำข้อสอบ', primary: true, to: { name: 'quiz-practice', params: { quizId: q.quiz_id } } },
         { label: 'ตรวจสอบ/แก้ไข', to: { name: 'quiz-detail', params: { quizId: q.quiz_id } } }
       ]
     }))
