@@ -16,14 +16,14 @@ function renderFatalError(err) {
   const stack = err?.stack || ''
   appEl.innerHTML = `
     <div style="max-width:640px;margin:3rem auto;padding:1.5rem;
-      font-family:system-ui,sans-serif;border:1px solid #f0c4c4;
-      border-radius:12px;background:#fdecec;color:#1a1a1a;">
-      <h2 style="margin-top:0;color:#c0392b;">เกิดข้อผิดพลาดตอนโหลดแอป</h2>
+      font-family:system-ui,sans-serif;border:1px solid var(--danger,#c0473f);
+      border-radius:12px;background:var(--danger-bg,#fdebec);color:var(--text,#26344d);">
+      <h2 style="margin-top:0;color:var(--danger,#c0473f);">เกิดข้อผิดพลาดตอนโหลดแอป</h2>
       <p style="font-size:0.9rem;line-height:1.6;">
         แอปไม่สามารถเริ่มทำงานได้ ข้อความ Error ด้านล่างนี้คือสาเหตุ —
         ก็อปไปหา AI หรือส่งให้ Claude ดูต่อได้เลย
       </p>
-      <pre style="white-space:pre-wrap;background:#fff;padding:0.75rem;
+      <pre style="white-space:pre-wrap;background:var(--surface,#fff);padding:0.75rem;
         border-radius:8px;font-size:0.8rem;overflow:auto;">${message}\n\n${stack}</pre>
     </div>
   `

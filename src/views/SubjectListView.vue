@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../composables/useAuth'
+import { confirmDialog, toast } from '../composables/useDialog'
 
 const { user } = useAuth()
 
@@ -88,10 +89,11 @@ async function createSubject() {
     .select('id, name, created_at')
     .single()
 
-  if (error) errorMessage.value = 'สร้างวิชาไม่สำเร็จ: ' + error.message
+  if (error) toast.error('สร้างวิชาไม่สำเร็จ: ' + error.message)
   else {
     subjects.value.unshift(data)
     newSubjectName.value = ''
+    toast.success(`เพิ่มวิชา "${data.name}" แล้ว`)
   }
   isCreating.value = false
 }
@@ -125,11 +127,12 @@ async function saveEdit(subject) {
     .select('id, name, created_at')
     .single()
 
-  if (error) errorMessage.value = 'แก้ไขชื่อวิชาไม่สำเร็จ: ' + error.message
+  if (error) toast.error('แก้ไขชื่อวิชาไม่สำเร็จ: ' + error.message)
   else {
     const idx = subjects.value.findIndex((s) => s.id === subject.id)
     if (idx !== -1) subjects.value[idx] = data
     cancelEdit()
+    toast.success('บันทึกชื่อวิชาแล้ว')
   }
   isSavingEdit.value = false
 }
@@ -150,21 +153,32 @@ async function handleDelete(subject) {
   const setCount = sets.count || 0
   const total = docCount + sumCount + quizCount + setCount
 
-  let message = `ต้องการลบวิชา "${subject.name}" ใช่หรือไม่?`
-  if (total > 0) {
-    message +=
-      `\n\n⚠️ คำเตือน: วิชานี้มีเนื้อหาอยู่ทั้งหมด ${total} รายการ\n` +
-      `- เอกสาร: ${docCount}\n- Summary: ${sumCount}\n- Quiz: ${quizCount}\n- Flashcard Set: ${setCount}\n\n` +
-      `เนื้อหาทั้งหมดนี้จะถูกลบถาวรไปพร้อมกับวิชา ไม่สามารถกู้คืนได้`
-  }
-
-  if (!confirm(message)) return
+  const ok = await confirmDialog({
+    tone: 'danger',
+    title: `ลบวิชา "${subject.name}" ?`,
+    message: total > 0 ? 'เนื้อหาทั้งหมดในวิชานี้จะถูกลบถาวรไปพร้อมกับวิชา' : 'วิชานี้ยังไม่มีเนื้อหา',
+    items: total > 0
+      ? [
+          { label: 'เอกสาร', value: docCount },
+          { label: 'สรุป', value: sumCount },
+          { label: 'Quiz', value: quizCount },
+          { label: 'Flashcard', value: setCount }
+        ]
+      : [],
+    warnings: total > 0 ? [`ลบแล้วไม่สามารถกู้คืนได้ (รวม ${total} รายการ)`] : [],
+    confirmText: 'ลบวิชา',
+    cancelText: 'ยกเลิก'
+  })
+  if (!ok) return
 
   deletingId.value = subject.id
   const { error } = await supabase.from('subjects').delete().eq('id', subject.id)
 
-  if (error) errorMessage.value = 'ลบวิชาไม่สำเร็จ: ' + error.message
-  else subjects.value = subjects.value.filter((s) => s.id !== subject.id)
+  if (error) toast.error('ลบวิชาไม่สำเร็จ: ' + error.message)
+  else {
+    subjects.value = subjects.value.filter((s) => s.id !== subject.id)
+    toast.success(`ลบวิชา "${subject.name}" แล้ว`)
+  }
   deletingId.value = null
 }
 

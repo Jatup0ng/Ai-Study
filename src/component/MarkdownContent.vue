@@ -49,8 +49,17 @@ function fixHline(text) {
   return text.replace(/\\hline\s*\{/g, '\\{')
 }
 
+// Gemini บางครั้งเขียน \text{INSERT} โดด ๆ ไม่มี $ ครอบ — KaTeX เลยไม่ถูกเรียกและโชว์เป็นข้อความดิบ "\text{INSERT}"
+// เจอบ่อยกับคำสั่ง SQL/ชื่อคำศัพท์ในแฟลชการ์ด จึงแปลงเฉพาะที่อยู่นอกสูตร ($...$ / $$...$$) ให้เป็นโค้ดสั้น ๆ `INSERT`
+function fixBareText(text) {
+  return text
+    .split(/(\$\$[\s\S]+?\$\$|\$[^$\n]+?\$)/g) // ตำแหน่งคี่ = ช่วงสูตรที่ห้ามแตะ
+    .map((part, i) => (i % 2 === 1 ? part : part.replace(/\\text\{([^{}]*)\}/g, (_, inner) => '`' + inner + '`')))
+    .join('')
+}
+
 const html = computed(() => {
-  const text = fixTextMode(normalizeMath(fixHline(props.source || '')))
+  const text = fixTextMode(fixBareText(normalizeMath(fixHline(props.source || ''))))
   const raw = props.inline
     ? md.parseInline(text, { breaks: props.breaks })
     : md.parse(text, { breaks: props.breaks })

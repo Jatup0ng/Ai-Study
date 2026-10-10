@@ -2,6 +2,7 @@
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { RouterLink } from 'vue-router'
 import { supabase } from '../supabaseClient'
+import { toast } from '../composables/useDialog'
 import ShareButton from '../component/ShareButton.vue'
 import MarkdownContent from '../component/MarkdownContent.vue'
 
@@ -196,7 +197,7 @@ function cancelEdit() {
 async function saveEdit() {
   const content = editedContent.value.trim()
   if (!content) {
-    saveError.value = 'เนื้อหาต้องไม่ว่างเปล่า'
+    toast.warning('เนื้อหาสรุปต้องไม่ว่างเปล่า', { title: 'บันทึกไม่ได้' })
     return
   }
 
@@ -211,10 +212,11 @@ async function saveEdit() {
     .single()
 
   if (error) {
-    saveError.value = 'บันทึกไม่สำเร็จ: ' + error.message
+    toast.error('บันทึกไม่สำเร็จ: ' + error.message)
   } else {
     summary.value = data
     isEditing.value = false
+    toast.success('บันทึกสรุปแล้ว')
   }
   isSaving.value = false
 }
@@ -323,7 +325,6 @@ onMounted(fetchSummary)
           </div>
         </header>
 
-        <p v-if="saveError" class="error-text" role="alert">{{ saveError }}</p>
 
         <article class="summary-card">
           <template v-if="isEditing">

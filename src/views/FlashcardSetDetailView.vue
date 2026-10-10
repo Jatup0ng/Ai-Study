@@ -312,7 +312,7 @@ onBeforeUnmount(() => {
   position: fixed;
   inset: 0;
   z-index: 40;
-  background: rgba(21, 25, 39, 0.55);
+  background: var(--scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -329,7 +329,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--border);
   border-radius: 24px;
   overflow: hidden;
-  box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--shadow-lift);
 }
 
 :root[data-theme='dark'] .modal {
@@ -444,7 +444,7 @@ onBeforeUnmount(() => {
   color: var(--text);
   text-align: left;
   cursor: pointer;
-  box-shadow: 0 18px 40px -22px rgba(20, 30, 70, 0.45);
+  box-shadow: var(--shadow-lift);
 }
 
 :root[data-theme='dark'] .big-card {

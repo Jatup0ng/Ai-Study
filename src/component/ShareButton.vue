@@ -259,7 +259,7 @@ async function copyLink() {
 .share-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(27, 29, 41, 0.35);
+  background: var(--scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -273,7 +273,7 @@ async function copyLink() {
   padding: 1.25rem;
   width: 100%;
   max-width: 420px;
-  box-shadow: 0 10px 30px rgba(27, 29, 41, 0.2);
+  box-shadow: var(--shadow-lift);
 }
 
 .share-popover-header {

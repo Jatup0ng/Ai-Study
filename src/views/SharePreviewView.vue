@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../composables/useAuth'
+import { toast } from '../composables/useDialog'
 import MarkdownContent from '../component/MarkdownContent.vue'
 
 const route = useRoute()
@@ -96,7 +97,7 @@ async function handleClone() {
       .single()
 
     if (createErr) {
-      cloneError.value = 'สร้างวิชาไม่สำเร็จ: ' + createErr.message
+      toast.error('สร้างวิชาไม่สำเร็จ: ' + createErr.message)
       isCloning.value = false
       return
     }
@@ -112,9 +113,10 @@ async function handleClone() {
   })
 
   if (error) {
-    cloneError.value = error.message || 'Clone ไม่สำเร็จ'
+    toast.error(error.message || 'Clone ไม่สำเร็จ', { title: 'Clone ไม่สำเร็จ' })
   } else {
     cloneResult.value = data
+    toast.success('Clone เนื้อหาเข้าวิชาของคุณแล้ว')
 
     // เจ้าของเลือกแนบไฟล์ต้นทาง -> ให้เซิร์ฟเวอร์คัดลอกไฟล์ลงบัญชีผู้รับ (เนื้อหา Clone สำเร็จแล้ว ไม่ย้อนกลับถ้าขั้นนี้พลาด)
     if (preview.value?.include_source_files && sourceFiles.value.length > 0) {
@@ -168,7 +170,7 @@ onMounted(async () => {
 
     <!-- Cloned successfully -->
     <div v-else-if="cloneResult" class="success-box">
-      <p class="success-title">Clone สำเร็จแล้ว 🎉</p>
+      <p class="success-title">Clone สำเร็จแล้ว </p>
       <p class="success-detail">
         เพิ่ม{{ typeLabel }}เข้าวิชาที่เลือกเรียบร้อย เป็นสำเนาของคุณเองแล้ว แก้ไข/ลบต้นฉบับภายหลังจะไม่กระทบสำเนานี้
       </p>
@@ -251,7 +253,6 @@ onMounted(async () => {
           <button class="primary-btn" :disabled="isCloning || !canClone" @click="handleClone">
             {{ isCloning ? 'กำลัง Clone...' : isNewSubject ? 'สร้างวิชาและ Clone' : 'Clone เข้าวิชานี้' }}
           </button>
-          <p v-if="cloneError" class="error-detail">{{ cloneError }}</p>
         </div>
       </div>
     </div>

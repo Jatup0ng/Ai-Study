@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
+import { toast } from '../composables/useDialog'
 
 const route = useRoute()
 const { signInWithGoogle } = useAuth()
@@ -15,7 +16,7 @@ async function handleGoogleLogin() {
     const redirectPath = typeof route.query.redirect === 'string' ? route.query.redirect : '/subjects'
     await signInWithGoogle(redirectPath)
   } catch (err) {
-    errorMessage.value = 'เข้าสู่ระบบไม่สำเร็จ ลองอีกครั้งได้เลยครับ'
+    toast.error('ลองอีกครั้งได้เลยครับ', { title: 'เข้าสู่ระบบไม่สำเร็จ' })
     isLoading.value = false
   }
 }
@@ -32,7 +33,6 @@ async function handleGoogleLogin() {
         {{ isLoading ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบด้วย Google' }}
       </button>
 
-      <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
     </div>
   </div>
 </template>

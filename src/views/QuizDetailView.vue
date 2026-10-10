@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { supabase } from '../supabaseClient'
+import { confirmDialog, toast } from '../composables/useDialog'
 import ShareButton from '../component/ShareButton.vue'
 import MarkdownContent from '../component/MarkdownContent.vue'
 
@@ -97,7 +98,7 @@ async function saveTitle() {
     quiz.value = data
     isEditingTitle.value = false
   } else {
-    errorMessage.value = 'แก้ไขชื่อ Quiz ไม่สำเร็จ: ' + error.message
+    toast.error('แก้ไขชื่อ Quiz ไม่สำเร็จ: ' + error.message)
   }
   isSavingTitle.value = false
 }
@@ -181,14 +182,21 @@ async function saveQuestion() {
 }
 
 async function handleDeleteQuestion(q) {
-  if (!confirm('ต้องการลบคำถามนี้ใช่หรือไม่? การลบนี้ไม่สามารถกู้คืนได้')) return
+  const ok = await confirmDialog({
+    tone: 'danger',
+    title: 'ลบคำถามนี้ ?',
+    message: 'การลบนี้ไม่สามารถกู้คืนได้',
+    confirmText: 'ลบคำถาม'
+  })
+  if (!ok) return
 
   deletingQuestionId.value = q.question_id
   const { error } = await supabase.from('questions').delete().eq('question_id', q.question_id)
 
   if (error) {
-    errorMessage.value = 'ลบคำถามไม่สำเร็จ: ' + error.message
+    toast.error('ลบคำถามไม่สำเร็จ: ' + error.message)
   } else {
+    toast.success('ลบคำถามแล้ว')
     const idx = questions.value.findIndex((item) => item.question_id === q.question_id)
     questions.value = questions.value.filter((item) => item.question_id !== q.question_id)
     if (selectedId.value === q.question_id) {

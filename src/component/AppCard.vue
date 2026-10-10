@@ -30,6 +30,6 @@ defineProps({
 
 .app-card.is-hoverable:hover {
   border-color: var(--border-strong);
-  box-shadow: 0 2px 10px rgba(27, 29, 41, 0.06);
+  box-shadow: var(--shadow-card);
 }
 </style>

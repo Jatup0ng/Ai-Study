@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../composables/useAuth'
+import { toast } from '../composables/useDialog'
 import MarkdownContent from '../component/MarkdownContent.vue'
 
 const props = defineProps({
@@ -92,7 +93,7 @@ const allAnswered = computed(() => answeredCount.value === questions.value.lengt
 
 async function handleSubmit() {
   if (!allAnswered.value) {
-    submitError.value = `กรุณาตอบให้ครบทุกข้อก่อน (ตอบแล้ว ${answeredCount.value}/${questions.value.length} ข้อ)`
+    toast.warning(`ตอบแล้ว ${answeredCount.value}/${questions.value.length} ข้อ — ตอบให้ครบทุกข้อก่อนส่งนะ`, { title: 'ยังตอบไม่ครบ' })
     return
   }
 
@@ -143,7 +144,7 @@ async function handleSubmit() {
 
     result.value = { score: correctCount, total: questions.value.length, attemptId: attempt.attempt_id }
   } catch (err) {
-    submitError.value = 'ส่งคำตอบไม่สำเร็จ: ' + (err.message || 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ')
+    toast.error('ส่งคำตอบไม่สำเร็จ: ' + (err.message || 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ'))
   } finally {
     isSubmitting.value = false
   }
@@ -271,7 +272,6 @@ onMounted(fetchQuiz)
             <div><MarkdownContent inline :source="currentQuestion.explanation" /></div>
           </div>
 
-          <p v-if="submitError" class="error-text" role="alert">{{ submitError }}</p>
 
           <div class="step-row">
             <button type="button" class="ghost-btn" :disabled="currentIndex === 0" @click="goTo(currentIndex - 1)">

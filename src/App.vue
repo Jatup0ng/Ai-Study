@@ -1,8 +1,11 @@
 <script setup>
+import AppDialogHost from './component/AppDialogHost.vue'
 </script>
 
 <template>
   <router-view />
+  <!-- pop up กลางของแอป (กล่องยืนยัน + แจ้งเตือนมุมจอ) — ใช้ผ่าน composables/useDialog.js -->
+  <AppDialogHost />
 </template>
 
 <style>
@@ -13,12 +16,12 @@
   --bg: #f4f7fc;
   --surface: #ffffff;
   --primary: #5575d9;
-  --primary-strong: #4a66c2;
+  --primary-strong: color-mix(in srgb, var(--primary) 85%, var(--text));
   --on-primary: #ffffff;
   --secondary: #8b7ce8;
   --accent: #75cfc0;
   --text: #26344d;
-  --text-muted: #66748c;
+  --text-muted: #758198;
   --border: #e1e7f0;
   --hover: #e8eeff;
 
@@ -31,13 +34,16 @@
   --danger: #c0473f;
   --danger-bg: #fdebec;
 
-  /* สีประจำวิชา (ใช้กับการ์ดวิชา) */
-  --subj-1: #5575d9;
-  --subj-2: #2f8a99;
-  --subj-3: #6b58c6;
-  --subj-4: #b87a22;
-  --subj-5: #c0587a;
-  --subj-6: #3d8a57;
+  /* สีประจำวิชา — ใช้เฉพาะสีในพาเลต (primary / secondary / accent และสีผสมระหว่างกัน) */
+  --subj-1: var(--primary);
+  --subj-2: var(--accent);
+  --subj-3: var(--secondary);
+  --subj-4: color-mix(in srgb, var(--primary) 55%, var(--accent));
+  --subj-5: color-mix(in srgb, var(--secondary) 55%, var(--primary));
+  --subj-6: color-mix(in srgb, var(--accent) 55%, var(--secondary));
+
+  /* ฉากหลังของ pop up */
+  --scrim: rgba(38, 52, 77, 0.45);
 
   --shadow-card: 0 1px 2px rgba(38, 52, 77, 0.04);
   --shadow-lift: 0 10px 24px -14px rgba(38, 52, 77, 0.35);
@@ -69,12 +75,7 @@
   --danger: #f28a94;
   --danger-bg: #472b35;
 
-  --subj-1: #91a7ff;
-  --subj-2: #5cc1ce;
-  --subj-3: #a99bf0;
-  --subj-4: #e6b063;
-  --subj-5: #e88da3;
-  --subj-6: #7cc48f;
+  --scrim: rgba(21, 25, 39, 0.72);
 
   --shadow-card: none;
   --shadow-lift: 0 10px 24px -14px rgba(0, 0, 0, 0.6);
@@ -91,12 +92,8 @@
   --border-strong: color-mix(in srgb, var(--border) 65%, var(--text-muted));
   --indigo: var(--primary);
   --indigo-dark: var(--primary-strong);
-  --highlighter: #ffd84d;
+  --highlighter: var(--warning);
   --highlighter-soft: var(--warning-bg);
-}
-
-:root[data-theme='dark'] {
-  --highlighter: #f2c06b;
 }
 
 * {
