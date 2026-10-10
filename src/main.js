@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
+import { initTheme } from './composables/useTheme'
 
 // --------------------------------------------------------------
 // Error Boundary ระดับแอป — ถ้าเกิด Error ตอน Mount หรือระหว่าง
@@ -34,6 +35,8 @@ window.addEventListener('error', (e) => {
 window.addEventListener('unhandledrejection', (e) => {
   if (!document.getElementById('app')?.hasChildNodes()) renderFatalError(e.reason)
 })
+
+initTheme()
 
 try {
   const app = createApp(App)
